@@ -917,15 +917,15 @@ function buildPriceLinePlugin(p, candles) {
       ctx.strokeStyle=color+"99";ctx.lineWidth=1;ctx.setLineDash([4,4]);
       ctx.beginPath();ctx.moveTo(x.getPixelForValue(candles.length-1),yPos);ctx.lineTo(right,yPos);ctx.stroke();
       ctx.setLineDash([]);
-      const labelW=Math.max(42,chart.canvas.width-right-4),labelH=14,labelX=right+2;
+      const labelW=Math.max(42,chart.canvas.width-right-4),labelH=16,labelX=right+2;
       ctx.fillStyle=color;ctx.fillRect(labelX,yPos-labelH/2,labelW,labelH);
-      ctx.fillStyle="#000";ctx.font="bold 9px 'JetBrains Mono'";
+      ctx.fillStyle="#000";ctx.font="bold 10px 'JetBrains Mono'";
       ctx.textAlign="center";ctx.textBaseline="middle";
       ctx.fillText(fmt(price),labelX+labelW/2,yPos);
       const rem=candleTimeRemaining(p.tf,last.t);
-      if (rem&&yPos+labelH/2+11<chart.canvas.height){
-        ctx.fillStyle=color;ctx.font="8px 'JetBrains Mono'";ctx.textBaseline="top";
-        ctx.fillText(rem,labelX+labelW/2,yPos+labelH/2+2);
+      if (rem&&yPos+labelH/2+16<chart.canvas.height){
+        ctx.fillStyle=color;ctx.font="bold 11px 'JetBrains Mono'";ctx.textBaseline="top";
+        ctx.fillText(rem,labelX+labelW/2,yPos+labelH/2+3);
       }
       ctx.restore();
     }
@@ -1049,6 +1049,7 @@ function drawRSI(p, candles) {
       ctx.setLineDash([]);ctx.restore();
     }
   };
+  const rsiXMax=candles.length-0.7+(indicators.arima&&p.forecastData.length?p.forecastData.length:0);
   p.rsiChart=new Chart(canvas,{
     type:"scatter",
     data:{labels:candles.map((_,i)=>i),datasets:[{
@@ -1066,7 +1067,7 @@ function drawRSI(p, candles) {
         titleFont:{family:"'JetBrains Mono'"},bodyFont:{family:"'JetBrains Mono'",size:11}
       }},
       scales:{
-        x:{type:"linear",min:-0.3,max:candles.length-0.7,grid:{color:"#1e253011"},ticks:{display:false}},
+        x:{type:"linear",min:-0.3,max:rsiXMax,grid:{color:"#1e253011"},ticks:{display:false}},
         y:{min:0,max:100,position:"right",grid:{color:"#1e253011"},
            ticks:{color:"#3d5066",font:{family:"'JetBrains Mono'",size:8},callback:(v)=>v===30||v===70||v===50?v:""}}
       }
@@ -1076,7 +1077,7 @@ function drawRSI(p, candles) {
 }
 
 function drawMACD(p, candles) {
-  if (!candles||candles.length<35) return;
+  if (!candles||candles.length<3) return;
   const {macdLine,signal,hist}=calcMACD(candles);
   const wrap=document.getElementById("utility-canvas-wrap-"+p.idx);
   const W=wrap.clientWidth-20, H=wrap.clientHeight-4;
@@ -1126,7 +1127,7 @@ function drawMACD(p, candles) {
         titleFont:{family:"'JetBrains Mono'"},bodyFont:{family:"'JetBrains Mono'",size:11}
       }},
       scales:{
-        x:{type:"linear",min:-0.3,max:candles.length-0.7,grid:{color:"#1e253011"},ticks:{display:false}},
+        x:{type:"linear",min:-0.3,max:candles.length-0.7+(indicators.arima&&p.forecastData.length?p.forecastData.length:0),grid:{color:"#1e253011"},ticks:{display:false}},
         y:{position:"right",grid:{color:"#1e253011"},
            ticks:{color:"#3d5066",font:{family:"'JetBrains Mono'",size:8},callback:(v)=>v===0?"0":v.toFixed(2)}}
       }
