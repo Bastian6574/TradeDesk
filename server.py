@@ -9,7 +9,16 @@ from flask import Flask, jsonify, send_from_directory, request
 from flask_cors import CORS
 import yfinance as yf
 import pandas as pd
+import numpy as _np
+
+try:
+    from statsmodels.tsa.arima.model import ARIMA as _ARIMA
+    _arima_ok = True
+except ImportError:
+    _arima_ok = False
 import json, os, subprocess, time
+import requests as _req
+from datetime import datetime, timezone
 
 # ── CHART CACHE ───────────────────────────────────────────────────────────────
 _chart_cache = {}  # key -> (data, expires_at)
@@ -132,6 +141,127 @@ def get_sentiment():
     if _sentiment is None:
         return jsonify({"error": "Sentiment engine not available"}), 503
     return jsonify(_sentiment.get())
+
+def _crypto_details(ticker):
+    sym = ticker + "USDT"
+    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    day_start_ms = int(datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
+    buy_vol = 0.0; total_vol = 0.0
+    start = day_start_ms
+    while start < now_ms:
+        r = _req.get("https://api.binance.com/api/v3/klines",
+            params={"symbol": sym, "interval": "1m",
+                    "startTime": start, "endTime": now_ms, "limit": 1000},
+            timeout=6)
+        chunk = r.json()
+        if not chunk or isinstance(chunk, dict): break
+        for k in chunk:
+            total_vol += float(k[5])
+            buy_vol   += float(k[9])   # taker buy base asset volume
+        if len(chunk) < 1000: break
+        start = chunk[-1][0] + 60000
+    r2 = _req.get("https://api.binance.com/api/v3/klines",
+        params={"symbol": sym, "interval": "1d", "limit": 8}, timeout=6)
+    daily = r2.json()
+    past = daily[:-1] if len(daily) > 1 else daily
+    avg_daily = sum(float(k[5]) for k in past) / len(past) if past else 0
+    return {"buy_vol": round(buy_vol, 4), "sell_vol": round(total_vol - buy_vol, 4),
+            "total_vol": round(total_vol, 4), "avg_daily_vol": round(avg_daily, 4), "is_crypto": True}
+
+def _stock_details(ticker):
+    data_1m = fetch_chart_data(ticker, "1d", "1m")
+    today_vol = int(sum(c["v"] for c in data_1m["candles"])) if data_1m and not data_1m.get("error") else 0
+    data_1d = fetch_chart_data(ticker, "10d", "1d")
+    candles_1d = data_1d["candles"] if data_1d and not data_1d.get("error") else []
+    past = candles_1d[:-1] if len(candles_1d) > 1 else candles_1d
+    avg_daily = int(sum(c["v"] for c in past) / len(past)) if past else 0
+    return {"buy_vol": None, "sell_vol": None, "total_vol": today_vol,
+            "avg_daily_vol": avg_daily, "is_crypto": False}
+
+@app.route("/api/details/<ticker>")
+def get_details(ticker):
+    t = ticker.upper()
+    cache_key = ("details", t)
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return jsonify(cached)
+    try:
+        result = _crypto_details(t) if t in CRYPTO_TICKERS else _stock_details(t)
+        _cache_set(cache_key, result, 10)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/forecast/<ticker>")
+def get_forecast(ticker):
+    import warnings
+    t        = ticker.upper()
+    interval = request.args.get("interval", "30m")
+    period   = request.args.get("period",   "5d")
+    n        = min(int(request.args.get("n", 20)), 50)
+
+    cache_key = ("forecast", t, interval, period)
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return jsonify(cached)
+
+    data = fetch_chart_data(t, period, interval)
+    if not data or data.get("error"):
+        return jsonify({"error": "No chart data"}), 404
+
+    candles = data["candles"]
+    closes  = [c["c"] for c in candles]
+
+    means = ci_lo = ci_hi = None
+    if _arima_ok and len(closes) >= 10:
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore")
+                fit  = _ARIMA(closes, order=(2, 1, 2)).fit()
+                fc   = fit.get_forecast(steps=n)
+                means  = fc.predicted_mean.tolist()
+                ci     = fc.conf_int(alpha=0.3)
+                ci_lo  = ci.iloc[:, 0].tolist()
+                ci_hi  = ci.iloc[:, 1].tolist()
+        except Exception:
+            means = None
+
+    if means is None:
+        # Fallback: linear extrapolation on last 20 candles
+        xs    = _np.arange(min(20, len(closes)))
+        ys    = _np.array(closes[-20:])
+        m, b  = _np.polyfit(xs, ys, 1)
+        means = [float(m * (len(xs) + i) + b) for i in range(n)]
+        std   = float(_np.std(_np.diff(ys))) if len(ys) > 1 else float(closes[-1]) * 0.005
+        ci_lo = [v - 2 * std for v in means]
+        ci_hi = [v + 2 * std for v in means]
+
+    recent = candles[-20:]
+    atr    = float(_np.mean([c["h"] - c["l"] for c in recent]))
+    interval_ms = candles[-1]["t"] - candles[-2]["t"] if len(candles) >= 2 else 1800000
+    last_t = candles[-1]["t"]
+    prev_c = float(candles[-1]["c"])
+
+    forecast = []
+    for i in range(n):
+        fc_c = float(means[i])
+        fc_o = prev_c
+        fc_h = max(fc_o, fc_c) + atr * 0.3
+        fc_l = min(fc_o, fc_c) - atr * 0.3
+        forecast.append({
+            "t":     int(last_t + (i + 1) * interval_ms),
+            "o":     round(fc_o, 4),  "h": round(fc_h, 4),
+            "l":     round(fc_l, 4),  "c": round(fc_c, 4),
+            "ci_lo": round(float(ci_lo[i]), 4),
+            "ci_hi": round(float(ci_hi[i]), 4),
+        })
+        prev_c = fc_c
+
+    result = {"ticker": t, "interval": interval,
+              "model": "ARIMA(2,1,2)" if _arima_ok else "linear", "forecast": forecast}
+    _cache_set(cache_key, result, 60)
+    return jsonify(result)
 
 @app.route("/api/mini/<ticker>")
 def mini_chart(ticker):

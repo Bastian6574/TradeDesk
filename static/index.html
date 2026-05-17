@@ -322,14 +322,26 @@
     flex-shrink: 0;
   }
 
-  #right-panel-content {
+  #right-panel-scroll {
     flex: 1;
     overflow-y: auto;
-    padding: 8px;
   }
+  #right-panel-scroll::-webkit-scrollbar { width:3px; }
+  #right-panel-scroll::-webkit-scrollbar-thumb { background:var(--border2); }
 
-  #right-panel-content::-webkit-scrollbar { width:3px; }
-  #right-panel-content::-webkit-scrollbar-thumb { background:var(--border2); }
+  #right-panel-content { padding: 8px; }
+
+  #details-content { padding: 6px 8px 8px; }
+
+  .detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 2px;
+    border-bottom: 1px solid var(--border);
+  }
+  .detail-label { font-size: 9px; color: var(--text3); letter-spacing: 1px; }
+  .detail-val   { font-size: 11px; color: var(--text2); letter-spacing: 1px; font-weight: 500; }
 
   .rp-section-label {
     font-size: 9px;
@@ -553,6 +565,9 @@
       <div class="footer-sep"></div>
       <div id="zoom-indicator">ZOOM 150</div>
 
+      <div class="footer-sep"></div>
+      <button class="tf-btn active" id="fcst-btn" onclick="toggleForecast()" title="Toggle AI forecast">FCST</button>
+
       <div class="widget-name">MAIN</div>
     </div>
 
@@ -561,6 +576,8 @@
 
   <!-- RIGHT PANEL: Technical Widgets -->
   <div id="right-panel">
+    <div id="right-panel-scroll">
+
     <div class="right-panel-header">SENTIMENT</div>
     <div id="right-panel-content">
       <!-- TECH -->
@@ -595,8 +612,27 @@
         </div>
         <div class="rp-detail" id="rp-news-detail">scanning...</div>
       </div>
-
     </div>
+
+    <div class="right-panel-header" style="border-top:1px solid var(--border);">DETAILS</div>
+    <div id="details-content">
+      <div class="rp-section-label">SESSION VOL</div>
+      <div class="detail-row">
+        <span class="detail-label" id="det-buy-label">▲ BUY</span>
+        <span class="detail-val" id="det-buy-vol">—</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label" id="det-sell-label">▼ SELL</span>
+        <span class="detail-val" id="det-sell-vol">—</span>
+      </div>
+      <div class="rp-section-label" style="margin-top:6px;">7D DAILY AVG</div>
+      <div class="detail-row" style="border-bottom:none;">
+        <span class="detail-label">VOL</span>
+        <span class="detail-val" id="det-avg-vol">—</span>
+      </div>
+    </div>
+
+    </div><!-- end right-panel-scroll -->
   </div>
 
   </div><!-- end center-right -->
@@ -666,6 +702,7 @@ async function init() {
   startClock();
   initScrollZoom();
   scheduleSentiment();
+  scheduleDetails();
 }
 
 async function loadState() {
@@ -718,6 +755,7 @@ function switchMonitor(n) {
   updateMonitorTabs();
   loadMainChart(currentTicker);
   syncState();
+  fetchDetails();
 }
 
 function updateMonitorTabs() {
@@ -834,6 +872,7 @@ function loadTicker(ticker) {
   });
   loadMainChart(ticker);
   syncState();
+  fetchDetails();
 }
 
 async function loadMainChart(ticker) {
@@ -880,7 +919,7 @@ async function startLiveStream(ticker) {
     liveWS.onopen = () => { showLoading(false); setLiveBadge(true); };
     liveWS.onmessage = (evt) => {
       const k = JSON.parse(evt.data).k;
-      const candle = { t:k.t, o:parseFloat(k.o), h:parseFloat(k.h), l:parseFloat(k.l), c:parseFloat(k.c), live:!k.x };
+      const candle = { t:k.t, o:parseFloat(k.o), h:parseFloat(k.h), l:parseFloat(k.l), c:parseFloat(k.c), v:parseFloat(k.v), live:!k.x };
       if (liveCandles.length && liveCandles[liveCandles.length-1].live)
         liveCandles[liveCandles.length-1] = candle;
       else liveCandles.push(candle);
@@ -979,6 +1018,103 @@ function stopLiveStream() {
   setLiveBadge(false);
 }
 
+// ── FORECAST ──────────────────────────────────────────────────────────────────
+let forecastData    = [];
+let forecastOffset  = 0;
+let forecastEnabled = true;
+
+function buildForecastPlugin() {
+  return {
+    id: "forecast",
+    afterDatasetsDraw(chart) {
+      if (!forecastData.length || !forecastEnabled) return;
+      const {ctx, scales:{x,y}, chartArea:{top, bottom}} = chart;
+      ctx.save();
+
+      // Dashed separator at the real/forecast boundary
+      const sepX = x.getPixelForValue(forecastOffset - 0.5);
+      ctx.strokeStyle = "#6a809955";
+      ctx.lineWidth   = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.moveTo(sepX, top); ctx.lineTo(sepX, bottom); ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 70% confidence band (shaded)
+      ctx.fillStyle   = "#3e8ef0";
+      ctx.globalAlpha = 0.07;
+      ctx.beginPath();
+      forecastData.forEach((f, i) => {
+        const px = x.getPixelForValue(forecastOffset + i);
+        const py = y.getPixelForValue(f.ci_hi);
+        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      });
+      [...forecastData].reverse().forEach((f, i) => {
+        const idx = forecastData.length - 1 - i;
+        ctx.lineTo(x.getPixelForValue(forecastOffset + idx), y.getPixelForValue(f.ci_lo));
+      });
+      ctx.closePath(); ctx.fill();
+
+      // Ghost candles
+      ctx.globalAlpha = 0.45;
+      forecastData.forEach((f, i) => {
+        const xi    = forecastOffset + i;
+        const xPos  = x.getPixelForValue(xi);
+        const barW  = Math.max(2, (x.getPixelForValue(1) - x.getPixelForValue(0)) * 0.6);
+        const openY = y.getPixelForValue(f.o), closeY = y.getPixelForValue(f.c);
+        const highY = y.getPixelForValue(f.h), lowY   = y.getPixelForValue(f.l);
+        const bull  = f.c >= f.o;
+        ctx.strokeStyle = bull ? "#00d47e" : "#f03e3e";
+        ctx.fillStyle   = bull ? "#00d47e22" : "#f03e3e22";
+        ctx.lineWidth   = 1;
+        ctx.setLineDash([3, 2]);
+        ctx.beginPath(); ctx.moveTo(xPos, highY); ctx.lineTo(xPos, lowY); ctx.stroke();
+        ctx.setLineDash([]);
+        const bTop = Math.min(openY, closeY), bH = Math.max(1, Math.abs(closeY - openY));
+        ctx.fillRect(xPos - barW/2, bTop, barW, bH);
+        ctx.strokeRect(xPos - barW/2, bTop, barW, bH);
+      });
+
+      ctx.restore();
+    }
+  };
+}
+
+async function loadForecast(ticker, tf, offset) {
+  forecastData = [];
+  if (!forecastEnabled || !mainChart || tf === "1s") return;
+  const period = TF_PERIOD[tf] || "5d";
+  try {
+    const r = await fetch(API + `/api/forecast/${ticker}?interval=${tf}&period=${period}&n=20`);
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.error || !d.forecast || !d.forecast.length) return;
+    forecastOffset = offset;
+    forecastData   = d.forecast;
+    if (!mainChart) return;
+    // Expand axes to accommodate forecast
+    const allPrices = forecastData.flatMap(f => [f.ci_lo, f.ci_hi]);
+    mainChart.options.scales.y.min = Math.min(mainChart.options.scales.y.min, Math.min(...allPrices) * 0.999);
+    mainChart.options.scales.y.max = Math.max(mainChart.options.scales.y.max, Math.max(...allPrices) * 1.001);
+    mainChart.options.scales.x.max = offset + forecastData.length - 0.7;
+    mainChart.update("none");
+  } catch(e) {}
+}
+
+function toggleForecast() {
+  forecastEnabled = !forecastEnabled;
+  document.getElementById("fcst-btn").classList.toggle("active", forecastEnabled);
+  if (forecastEnabled) {
+    const offset = forecastOffset || (candleData?._liveCandles?.length ?? chartZoom);
+    loadForecast(currentTicker, currentTF, offset);
+  } else {
+    forecastData = [];
+    if (mainChart) {
+      mainChart.options.scales.x.max = forecastOffset - 0.7;
+      mainChart.update("none");
+    }
+  }
+}
+
 // ── DRAW FUNCTIONS ────────────────────────────────────────────────────────────
 function calcMA(arr, n) {
   return arr.map((_,i) => {
@@ -991,7 +1127,25 @@ function buildCandlePlugins(candles, avg, isLive) {
   const candlePlugin = {
     id: "candles",
     beforeDatasetsDraw(chart) {
-      const {ctx, scales:{x,y}} = chart;
+      const {ctx, scales:{x,y}, chartArea:{top, bottom}} = chart;
+      const maxVol   = candles.reduce((m,c) => Math.max(m, c.v||0), 1);
+      const volZoneH = (bottom - top) * 0.18;
+
+      // Pass 1: volume bars (drawn first so candles render on top)
+      // zero-volume candles (pre/post-market) get a 1px stub so there are no gaps
+      candles.forEach((c,i) => {
+        const xPos = x.getPixelForValue(i);
+        const barW = Math.max(2, (x.getPixelForValue(1)-x.getPixelForValue(0))*0.6);
+        const volH = c.v > 0 ? Math.max(2, ((c.v||0) / maxVol) * volZoneH) : 1;
+        const bull = c.c >= c.o;
+        ctx.fillStyle   = bull ? "#00d47e44" : "#f03e3e44";
+        ctx.strokeStyle = bull ? "#00d47e88" : "#f03e3e88";
+        ctx.lineWidth = 0.5;
+        ctx.fillRect(xPos - barW/2, bottom - volH, barW, volH);
+        ctx.strokeRect(xPos - barW/2, bottom - volH, barW, volH);
+      });
+
+      // Pass 2: candles
       candles.forEach((c,i) => {
         const xPos = x.getPixelForValue(i);
         const barW = Math.max(2, (x.getPixelForValue(1)-x.getPixelForValue(0))*0.6);
@@ -1081,6 +1235,7 @@ function drawMainChart(data) {
 
   updateStatusBar(candles[candles.length-1]);
 
+  forecastData = [];
   mainChart = new Chart(canvas, {
     type:"scatter",
     data: { labels:candles.map((_,i)=>i), datasets:[
@@ -1089,8 +1244,9 @@ function drawMainChart(data) {
       {data:candles.map((c,i)=>({x:i,y:c.ma50})), borderColor:"#a060f0", borderWidth:1.5, pointRadius:0, showLine:true, tension:0.3, spanGaps:true}
     ]},
     options: buildChartOptions(candles, minP, maxP, false),
-    plugins: buildCandlePlugins(candles, avg, false)
+    plugins: [...buildCandlePlugins(candles, avg, false), buildForecastPlugin()]
   });
+  loadForecast(currentTicker, currentTF, candles.length);
 }
 
 function drawLiveChart(ticker, lastPrice) {
@@ -1313,6 +1469,56 @@ function updateSentimentPanel(s) {
 function scheduleSentiment() {
   fetchSentiment();
   sentimentTimer = setInterval(fetchSentiment, 60000); // refresh every 60s
+}
+
+// ── DETAILS PANEL ─────────────────────────────────────────────────────────────
+let detailsTimer = null;
+
+function fmtVol(n) {
+  if (n == null || isNaN(n)) return "—";
+  if (n >= 1e9) return (n/1e9).toFixed(4) + "B";
+  if (n >= 1e6) return (n/1e6).toFixed(4) + "M";
+  if (n >= 1e3) return (n/1e3).toFixed(4) + "K";
+  return n.toFixed(4);
+}
+
+async function fetchDetails() {
+  try {
+    const r = await fetch(API + `/api/details/${currentTicker}`);
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.error) return;
+    updateDetailsPanel(d);
+  } catch(e) {}
+}
+
+function updateDetailsPanel(d) {
+  const buyEl   = document.getElementById("det-buy-vol");
+  const sellEl  = document.getElementById("det-sell-vol");
+  const avgEl   = document.getElementById("det-avg-vol");
+  const buyLbl  = document.getElementById("det-buy-label");
+  const sellLbl = document.getElementById("det-sell-label");
+  if (d.is_crypto) {
+    buyLbl.textContent   = "▲ BUY";
+    sellLbl.textContent  = "▼ SELL";
+    buyEl.textContent    = fmtVol(d.buy_vol);
+    sellEl.textContent   = fmtVol(d.sell_vol);
+    buyEl.style.color    = "var(--green)";
+    sellEl.style.color   = "var(--red)";
+  } else {
+    buyLbl.textContent   = "TODAY";
+    sellLbl.textContent  = "SPLIT";
+    buyEl.textContent    = fmtVol(d.total_vol);
+    sellEl.textContent   = "N/A";
+    buyEl.style.color    = "var(--text2)";
+    sellEl.style.color   = "var(--text3)";
+  }
+  avgEl.textContent = fmtVol(d.avg_daily_vol);
+}
+
+function scheduleDetails() {
+  fetchDetails();
+  detailsTimer = setInterval(fetchDetails, 5000);
 }
 
 // ── RSI ──────────────────────────────────────────────────────────────────────
