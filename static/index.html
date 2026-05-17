@@ -745,6 +745,7 @@ function updateLiveCandle(p, livePrice, changePct) {
       if (p.mainChart) p.mainChart.options.scales.x.max=p.forecastData.length>0
         ?candles.length-0.7+p.forecastData.length:candles.length-0.7;
     } else if (p.mainChart) p.mainChart.options.scales.x.max=candles.length-0.7;
+    if (indicators.arima) loadForecast(p,true);
   }
   const cur=candles[candles.length-1];
   cur.c=livePrice; cur.h=Math.max(cur.h,livePrice); cur.l=Math.min(cur.l,livePrice);
@@ -975,16 +976,18 @@ function buildForecastPlugin(p) {
   };
 }
 
-async function loadForecast(p) {
+async function loadForecast(p, nocache=false) {
   p.forecastData=[];
   if (!indicators.arima||!p.mainChart||p.tf==="1s") return;
+  const myGen=p._gen;
   const period=TF_PERIOD[p.tf]||"5d";
   const offset=p.candleData?._liveCandles?.length??p.chartZoom;
   try {
-    const r=await fetch(API+`/api/forecast/${p.ticker}?interval=${p.tf}&period=${period}&n=20`);
-    if (!r.ok) return;
+    const nc=nocache?"&nocache=1":"";
+    const r=await fetch(API+`/api/forecast/${p.ticker}?interval=${p.tf}&period=${period}&n=20${nc}`);
+    if (!r.ok||p._gen!==myGen) return;
     const d=await r.json();
-    if (d.error||!d.forecast?.length) return;
+    if (d.error||!d.forecast?.length||p._gen!==myGen) return;
     p.forecastOffset=offset; p.forecastData=d.forecast;
     if (!p.mainChart) return;
     const allP=p.forecastData.flatMap(f=>[f.ci_lo,f.ci_hi]);
