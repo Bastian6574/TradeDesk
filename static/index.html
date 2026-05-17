@@ -39,7 +39,9 @@
   #main { display:flex; flex:1; overflow:hidden; }
 
   /* ── SIDEBAR ── */
-  #sidebar { width:var(--sidebar); flex-shrink:0; background:var(--bg2); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; transition:width 0.2s; }
+  #sidebar { width:var(--sidebar); flex-shrink:0; background:var(--bg2); display:flex; flex-direction:column; overflow:hidden; min-width:60px; max-width:480px; }
+  #sidebar-resizer { width:4px; background:transparent; cursor:col-resize; flex-shrink:0; transition:background 0.15s; z-index:10; }
+  #sidebar-resizer:hover, #sidebar-resizer.dragging { background:var(--green); }
   .sidebar-header { padding:8px 10px 6px; border-bottom:1px solid var(--border); color:var(--text3); font-size:10px; letter-spacing:2px; text-transform:uppercase; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
   .add-ticker-btn { background:none; border:1px solid var(--border); color:var(--text3); cursor:pointer; font-family:var(--font); font-size:10px; padding:2px 6px; transition:all 0.15s; }
   .add-ticker-btn:hover { border-color:var(--green); color:var(--green); }
@@ -230,6 +232,7 @@
     </div>
     <div id="watchlist-items"></div>
   </div>
+  <div id="sidebar-resizer"></div>
 
   <!-- CENTER + RIGHT -->
   <div id="center-right">
@@ -1459,6 +1462,31 @@ async function init(){
 }
 
 document.getElementById("modal").addEventListener("click",e=>{if(e.target.id==="modal")closeModal();});
+
+// ── SIDEBAR RESIZE ────────────────────────────────────────────────────────────
+(()=>{
+  const resizer=document.getElementById("sidebar-resizer");
+  const sidebar=document.getElementById("sidebar");
+  let dragging=false, startX=0, startW=0;
+  resizer.addEventListener("mousedown",e=>{
+    dragging=true; startX=e.clientX; startW=sidebar.offsetWidth;
+    resizer.classList.add("dragging");
+    document.body.style.cursor="col-resize";
+    document.body.style.userSelect="none";
+  });
+  window.addEventListener("mousemove",e=>{
+    if (!dragging) return;
+    const w=Math.min(480,Math.max(60,startW+(e.clientX-startX)));
+    sidebar.style.width=w+"px";
+  });
+  window.addEventListener("mouseup",()=>{
+    if (!dragging) return;
+    dragging=false;
+    resizer.classList.remove("dragging");
+    document.body.style.cursor="";
+    document.body.style.userSelect="";
+  });
+})();
 
 let resizeTimer;
 window.addEventListener("resize",()=>{
