@@ -661,6 +661,7 @@ async function loadMainChart(p) {
     const data=await r.json();
     if (p._gen!==myGen){showLoading(p,false);return;}
     if (data.error){showLoading(p,false);return;}
+    p.forecastData=[];p.forecastOffset=0;
     updateHeader(p,data);
     drawMainChart(p,data);
     p.candleData=data;
@@ -788,7 +789,7 @@ function drawMainChart(p, data) {
   const minP=Math.min(...prices)*0.999, maxP=Math.max(...prices)*1.001;
   const canvas=makePanelCanvas(p);
   updateStatusBar(p,candles[candles.length-1]);
-  p.forecastData=[];
+  p.forecastOffset=candles.length;
   p.mainChart=new Chart(canvas,{
     type:"scatter",
     data:{labels:candles.map((_,i)=>i),datasets:[
@@ -988,7 +989,6 @@ function buildForecastPlugin(p) {
 }
 
 async function loadForecast(p, nocache=false) {
-  p.forecastData=[];
   if (!indicators.arima||!p.mainChart||p.tf==="1s") return;
   const myGen=p._gen;
   const period=TF_PERIOD[p.tf]||"5d";
