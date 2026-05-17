@@ -360,6 +360,13 @@
   .ind-row:last-child { border-bottom: none; }
   .ind-row:hover { color: var(--text); }
   .ind-cb { accent-color: var(--green); cursor: pointer; width: 11px; height: 11px; flex-shrink: 0; }
+  .ind-rsi-val { margin-left: auto; font-size: 9px; color: var(--blue); flex-shrink: 0; letter-spacing: 0; }
+  .ind-reload {
+    margin-left: 4px; cursor: pointer; color: var(--text3); font-size: 13px;
+    flex-shrink: 0; transition: color 0.15s; padding: 0 2px; line-height: 1; display: inline-block;
+  }
+  .ind-reload:hover { color: var(--blue); }
+  .ind-reload.spinning { animation: spin 0.7s linear infinite; color: var(--blue); }
 
   .rp-section-label {
     font-size: 9px;
@@ -652,11 +659,11 @@
     </div>
     <div id="indicators-content">
       <div id="indicators-inner">
-        <label class="ind-row"><input type="checkbox" class="ind-cb" id="ind-arima"  onchange="setIndicator('arima', this.checked)"><span>ARIMA FORECAST</span></label>
+        <label class="ind-row"><input type="checkbox" class="ind-cb" id="ind-arima"  onchange="setIndicator('arima', this.checked)"><span>ARIMA FORECAST</span><span class="ind-reload" id="arima-reload" onclick="reloadArima(event)" title="Re-run ARIMA">↻</span></label>
         <label class="ind-row"><input type="checkbox" class="ind-cb" id="ind-ma20"   onchange="setIndicator('ma20',  this.checked)"><span>MA 20</span></label>
         <label class="ind-row"><input type="checkbox" class="ind-cb" id="ind-ma50"   onchange="setIndicator('ma50',  this.checked)"><span>MA 50</span></label>
         <label class="ind-row"><input type="checkbox" class="ind-cb" id="ind-volume" onchange="setIndicator('volume',this.checked)"><span>VOLUME</span></label>
-        <label class="ind-row"><input type="checkbox" class="ind-cb" id="ind-rsi"    onchange="setIndicator('rsi',   this.checked)"><span>RSI</span></label>
+        <label class="ind-row"><input type="checkbox" class="ind-cb" id="ind-rsi"    onchange="setIndicator('rsi',   this.checked)"><span>RSI</span><span class="ind-rsi-val" id="ind-rsi-val">—</span></label>
       </div>
     </div>
 
@@ -722,6 +729,24 @@ const TF_PERIOD = {
   "1s":null, "1m":"1d", "5m":"2d", "15m":"5d",
   "30m":"5d", "1h":"1mo", "1d":"3mo"
 };
+
+function tfIntervalMs(tf) {
+  const m = { "1m":60000, "5m":300000, "15m":900000, "30m":1800000, "1h":3600000, "1d":86400000 };
+  return m[tf] || 0;
+}
+
+function candleTimeRemaining(tf, lastCandleTs) {
+  const iv = tfIntervalMs(tf);
+  if (!iv || !lastCandleTs) return null;
+  const rem = (lastCandleTs + iv) - Date.now();
+  if (rem <= 0) return null;
+  const s = Math.floor(rem / 1000);
+  const h = Math.floor(s / 3600);
+  const mn = Math.floor((s % 3600) / 60);
+  const sc = s % 60;
+  if (h > 0) return `${h}:${String(mn).padStart(2,'0')}:${String(sc).padStart(2,'0')}`;
+  return `${String(mn).padStart(2,'0')}:${String(sc).padStart(2,'0')}`;
+}
 
 function toBinanceSymbol(ticker) {
   const map = {
@@ -1020,31 +1045,64 @@ function updateLiveCandle(livePrice, changePct) {
   const candles = candleData._liveCandles;
   if (!candles.length) return;
 
-  // Update the last candle's close and high/low in our data
-  const last = candles[candles.length - 1];
-  last.c = livePrice;
-  last.h = Math.max(last.h, livePrice);
-  last.l = Math.min(last.l, livePrice);
+  const last  = candles[candles.length - 1];
+  const ivMs  = tfIntervalMs(currentTF);
 
-  // Update price in header
+  // Detect new candle: current TF interval has elapsed since last candle open
+  if (ivMs > 0 && Date.now() >= last.t + ivMs) {
+    if (Date.now() - last.t > ivMs * 5) {
+      // Way behind — do a full reload rather than stacking synthetic candles
+      loadMainChart(currentTicker);
+      return;
+    }
+    const newCandle = { t: last.t + ivMs, o: livePrice, h: livePrice, l: livePrice, c: livePrice, v: 0, ma20: null, ma50: null };
+    candles.push(newCandle);
+    if (candles.length > chartZoom) candles.shift();
+
+    // Rebuild all chart datasets to keep x-indices aligned after potential shift
+    if (mainChart) {
+      mainChart.options.scales.x.max = candles.length - 0.7;
+    }
+
+    // Shift ARIMA: consume first ghost candle since one new real candle just appeared
+    if (forecastData.length > 0) {
+      forecastData.shift();
+      forecastOffset = candles.length;
+      if (mainChart) {
+        mainChart.options.scales.x.max = forecastData.length > 0
+          ? candles.length - 0.7 + forecastData.length
+          : candles.length - 0.7;
+      }
+    }
+  }
+
+  // Update the current last candle (may be the newly created one)
+  const cur = candles[candles.length - 1];
+  cur.c = livePrice;
+  cur.h = Math.max(cur.h, livePrice);
+  cur.l = Math.min(cur.l, livePrice);
+
+  // Update header
   document.getElementById("main-price").textContent = fmt(livePrice);
   const chEl = document.getElementById("main-change");
   const pos = changePct >= 0;
-  chEl.textContent = (pos?"▲ +":"▼ ") + changePct.toFixed(2) + "%";
+  chEl.textContent = (pos ? "▲ +" : "▼ ") + changePct.toFixed(2) + "%";
   chEl.className = pos ? "pos" : "neg";
-  updateStatusBar(last);
+  updateStatusBar(cur);
 
-  // Fast redraw — just update the scatter dataset and trigger canvas redraw
-  // We need to repaint the candlestick plugin, so call update
-  const prices = candles.flatMap(c=>[c.h,c.l]);
+  const prices = candles.flatMap(c => [c.h, c.l]);
   const avg = state.averages[currentTicker];
   if (avg) prices.push(avg);
-  const minP=Math.min(...prices)*0.999, maxP=Math.max(...prices)*1.001;
+  const minP = Math.min(...prices) * 0.999;
+  const maxP = Math.max(...prices) * 1.001;
 
   if (mainChart) {
     mainChart.options.scales.y.min = minP;
     mainChart.options.scales.y.max = maxP;
-    mainChart.data.datasets[0].data = candles.map((c,i)=>({x:i,y:c.c}));
+    // Rebuild all datasets so x-indices stay aligned after any shift
+    mainChart.data.datasets[0].data = candles.map((c, i) => ({x: i, y: c.c}));
+    mainChart.data.datasets[1].data = candles.map((c, i) => ({x: i, y: c.ma20 ?? null}));
+    mainChart.data.datasets[2].data = candles.map((c, i) => ({x: i, y: c.ma50 ?? null}));
     mainChart.update("none");
     updateRSILive(candles);
   }
@@ -1209,12 +1267,101 @@ function _setIndicatorsPanelOpen(open) {
   arrow.style.transform   = open ? "rotate(0deg)" : "rotate(-90deg)";
 }
 
+async function reloadArima(e) {
+  e.stopPropagation();
+  e.preventDefault();
+  const icon = document.getElementById("arima-reload");
+  if (!icon || icon.classList.contains("spinning")) return;
+  icon.classList.add("spinning");
+  // Clear existing forecast
+  forecastData = [];
+  if (mainChart) {
+    const off = candleData?._liveCandles?.length ?? chartZoom;
+    mainChart.options.scales.x.max = off - 0.7;
+    mainChart.update("none");
+  }
+  const period = TF_PERIOD[currentTF] || "5d";
+  const offset = candleData?._liveCandles?.length ?? chartZoom;
+  try {
+    const r = await fetch(API + `/api/forecast/${currentTicker}?interval=${currentTF}&period=${period}&n=20&nocache=1`);
+    if (r.ok) {
+      const d = await r.json();
+      if (!d.error && d.forecast?.length) {
+        forecastOffset = offset;
+        forecastData   = d.forecast;
+        if (mainChart) {
+          const allP = forecastData.flatMap(f => [f.ci_lo, f.ci_hi]);
+          mainChart.options.scales.y.min = Math.min(mainChart.options.scales.y.min, Math.min(...allP) * 0.999);
+          mainChart.options.scales.y.max = Math.max(mainChart.options.scales.y.max, Math.max(...allP) * 1.001);
+          mainChart.options.scales.x.max = offset + forecastData.length - 0.7;
+          mainChart.update("none");
+        }
+      }
+    }
+  } catch(_e) {}
+  icon.classList.remove("spinning");
+}
+
 // ── DRAW FUNCTIONS ────────────────────────────────────────────────────────────
 function calcMA(arr, n) {
   return arr.map((_,i) => {
     if (i < n-1) return null;
     return arr.slice(i-n+1, i+1).reduce((s,v)=>s+v.c,0)/n;
   });
+}
+
+function buildPriceLinePlugin(candles) {
+  return {
+    id: "priceLine",
+    afterDraw(chart) {
+      if (!candles || !candles.length) return;
+      const { ctx, scales: { x, y }, chartArea: { left, right } } = chart;
+      const last  = candles[candles.length - 1];
+      const price = last.c;
+      const bull  = last.c >= last.o;
+      const color = bull ? "#00d47e" : "#f03e3e";
+      const yPos  = y.getPixelForValue(price);
+
+      ctx.save();
+      // Escape chart-area clip so we can draw into the y-axis zone
+      ctx.beginPath();
+      ctx.rect(0, 0, chart.canvas.width, chart.canvas.height);
+      ctx.clip();
+
+      // Dashed horizontal line from last candle to right edge
+      ctx.strokeStyle = color + "99";
+      ctx.lineWidth   = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(x.getPixelForValue(candles.length - 1), yPos);
+      ctx.lineTo(right, yPos);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Price label box in y-axis area
+      const labelW = Math.max(42, chart.canvas.width - right - 4);
+      const labelH = 14;
+      const labelX = right + 2;
+      ctx.fillStyle = color;
+      ctx.fillRect(labelX, yPos - labelH / 2, labelW, labelH);
+      ctx.fillStyle = "#000";
+      ctx.font = "bold 9px 'JetBrains Mono'";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(fmt(price), labelX + labelW / 2, yPos);
+
+      // Time remaining until candle close
+      const rem = candleTimeRemaining(currentTF, last.t);
+      if (rem && yPos + labelH / 2 + 11 < chart.canvas.height) {
+        ctx.fillStyle = color;
+        ctx.font = "8px 'JetBrains Mono'";
+        ctx.textBaseline = "top";
+        ctx.fillText(rem, labelX + labelW / 2, yPos + labelH / 2 + 2);
+      }
+
+      ctx.restore();
+    }
+  };
 }
 
 function buildCandlePlugins(candles, avg, isLive) {
@@ -1337,7 +1484,7 @@ function drawMainChart(data) {
       {data:candles.map((c,i)=>({x:i,y:c.ma50})), borderColor:"#a060f0", borderWidth:1.5, pointRadius:0, showLine:true, tension:0.3, spanGaps:true, hidden:!indicators.ma50}
     ]},
     options: buildChartOptions(candles, minP, maxP, false),
-    plugins: [...buildCandlePlugins(candles, avg, false), buildForecastPlugin()]
+    plugins: [...buildCandlePlugins(candles, avg, false), buildForecastPlugin(), buildPriceLinePlugin(candles)]
   });
   loadForecast(currentTicker, currentTF, candles.length);
 }
@@ -1364,7 +1511,7 @@ function drawLiveChart(ticker, lastPrice) {
       {data:ma50.map((v,i)=>({x:i,y:v})), borderColor:"#a060f0", borderWidth:1.5, pointRadius:0, showLine:true, tension:0.3, spanGaps:true, hidden:!indicators.ma50}
     ]},
     options: buildChartOptions(candles, minP, maxP, true),
-    plugins: buildCandlePlugins(candles, avg, true)
+    plugins: [...buildCandlePlugins(candles, avg, true), buildPriceLinePlugin(candles)]
   });
 }
 
@@ -1654,6 +1801,8 @@ function drawRSI(candles) {
   const lastRSI = rsiValues.filter(v => v !== null).pop();
   if (lastRSI !== undefined) {
     document.getElementById("rsi-value").textContent = lastRSI.toFixed(1);
+    const rsiValEl = document.getElementById("ind-rsi-val");
+    if (rsiValEl) rsiValEl.textContent = lastRSI.toFixed(1);
     document.getElementById("utility-label").textContent = "RSI " + rsiPeriod;
     const zoneEl = document.getElementById("rsi-zone");
     if (lastRSI >= 70)      { zoneEl.textContent = "OVERBOUGHT"; zoneEl.style.color = "var(--red)"; }

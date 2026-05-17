@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 _chart_cache = {}  # key -> (data, expires_at)
 
 _CACHE_TTL = {
-    "1m": 20, "5m": 60, "15m": 120,
+    "1m": 5, "5m": 60, "15m": 120,
     "30m": 120, "1h": 300, "1d": 600
 }
 
@@ -202,9 +202,11 @@ def get_forecast(ticker):
     n        = min(int(request.args.get("n", 20)), 50)
 
     cache_key = ("forecast", t, interval, period)
-    cached = _cache_get(cache_key)
-    if cached is not None:
-        return jsonify(cached)
+    nocache   = request.args.get("nocache", "0")
+    if nocache != "1":
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return jsonify(cached)
 
     data = fetch_chart_data(t, period, interval)
     if not data or data.get("error"):
