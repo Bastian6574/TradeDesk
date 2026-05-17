@@ -786,6 +786,7 @@ function drawMainChart(p, data) {
   data._liveCandles=candles;
   const avg=state.averages[p.ticker];
   const prices=candles.flatMap(c=>[c.h,c.l]); if (avg) prices.push(avg);
+  if (indicators.arima&&p.forecastData.length) p.forecastData.forEach(f=>{prices.push(f.ci_lo,f.ci_hi);});
   const minP=Math.min(...prices)*0.999, maxP=Math.max(...prices)*1.001;
   const canvas=makePanelCanvas(p);
   updateStatusBar(p,candles[candles.length-1]);
@@ -853,7 +854,7 @@ function buildChartOptions(p, candles, minP, maxP, isLive) {
       }
     },
     scales:{
-      x:{type:"linear",min:-0.3,max:candles.length-0.7,grid:{color:"#1e253022"},
+      x:{type:"linear",min:-0.3,max:candles.length-0.7+(indicators.arima&&p.forecastData.length?p.forecastData.length:0),grid:{color:"#1e253022"},
          ticks:{color:"#3d5066",font:{family:"'JetBrains Mono'",size:9},maxTicksLimit:8,
            callback:(v)=>{const c=candles[Math.round(v)];if(!c)return"";const d=new Date(c.t);
              return p.tf==="1d"?d.toLocaleDateString("en-US",{month:"short",day:"numeric"}):
