@@ -343,6 +343,24 @@
   .detail-label { font-size: 9px; color: var(--text3); letter-spacing: 1px; }
   .detail-val   { font-size: 11px; color: var(--text2); letter-spacing: 1px; font-weight: 500; }
 
+  /* Indicators panel */
+  .indicator-header {
+    cursor: pointer; user-select: none;
+    display: flex; justify-content: space-between; align-items: center;
+    border-top: 1px solid var(--border);
+  }
+  .indicator-header:hover { color: var(--text2); }
+  #indicators-content { overflow: hidden; transition: max-height 0.2s ease; }
+  #indicators-inner   { padding: 5px 8px 4px; }
+  .ind-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 2px; border-bottom: 1px solid var(--border);
+    cursor: pointer; font-size: 10px; color: var(--text2); letter-spacing: 1px; width: 100%;
+  }
+  .ind-row:last-child { border-bottom: none; }
+  .ind-row:hover { color: var(--text); }
+  .ind-cb { accent-color: var(--green); cursor: pointer; width: 11px; height: 11px; flex-shrink: 0; }
+
   .rp-section-label {
     font-size: 9px;
     letter-spacing: 2px;
@@ -565,9 +583,6 @@
       <div class="footer-sep"></div>
       <div id="zoom-indicator">ZOOM 150</div>
 
-      <div class="footer-sep"></div>
-      <button class="tf-btn active" id="fcst-btn" onclick="toggleForecast()" title="Toggle AI forecast">FCST</button>
-
       <div class="widget-name">MAIN</div>
     </div>
 
@@ -632,6 +647,19 @@
       </div>
     </div>
 
+    <div class="right-panel-header indicator-header" onclick="toggleIndicatorsPanel()">
+      INDICATORS <span id="ind-arrow" style="font-size:9px;transition:transform 0.15s;display:inline-block;">▾</span>
+    </div>
+    <div id="indicators-content">
+      <div id="indicators-inner">
+        <label class="ind-row"><input type="checkbox" class="ind-cb" id="ind-arima"  onchange="setIndicator('arima', this.checked)"><span>ARIMA FORECAST</span></label>
+        <label class="ind-row"><input type="checkbox" class="ind-cb" id="ind-ma20"   onchange="setIndicator('ma20',  this.checked)"><span>MA 20</span></label>
+        <label class="ind-row"><input type="checkbox" class="ind-cb" id="ind-ma50"   onchange="setIndicator('ma50',  this.checked)"><span>MA 50</span></label>
+        <label class="ind-row"><input type="checkbox" class="ind-cb" id="ind-volume" onchange="setIndicator('volume',this.checked)"><span>VOLUME</span></label>
+        <label class="ind-row"><input type="checkbox" class="ind-cb" id="ind-rsi"    onchange="setIndicator('rsi',   this.checked)"><span>RSI</span></label>
+      </div>
+    </div>
+
     </div><!-- end right-panel-scroll -->
   </div>
 
@@ -680,6 +708,16 @@ let tickerInterval = null;   // 1s price poll for live candle on non-1s timefram
 let candleData     = null;   // full candle array currently displayed
 const LIVE_MAX     = 500;
 
+// ── INDICATORS STATE ──────────────────────────────────────────────────────────
+const indicators = (() => {
+  const d = { arima:true, ma20:true, ma50:true, volume:true, rsi:true };
+  try { return {...d, ...JSON.parse(localStorage.getItem("td_indicators")||"{}")}; }
+  catch { return {...d}; }
+})();
+function saveIndicators() {
+  localStorage.setItem("td_indicators", JSON.stringify(indicators));
+}
+
 const TF_PERIOD = {
   "1s":null, "1m":"1d", "5m":"2d", "15m":"5d",
   "30m":"5d", "1h":"1mo", "1d":"3mo"
@@ -703,6 +741,7 @@ async function init() {
   initScrollZoom();
   scheduleSentiment();
   scheduleDetails();
+  initIndicatorUI();
 }
 
 async function loadState() {
@@ -1019,15 +1058,14 @@ function stopLiveStream() {
 }
 
 // ── FORECAST ──────────────────────────────────────────────────────────────────
-let forecastData    = [];
-let forecastOffset  = 0;
-let forecastEnabled = true;
+let forecastData   = [];
+let forecastOffset = 0;
 
 function buildForecastPlugin() {
   return {
     id: "forecast",
     afterDatasetsDraw(chart) {
-      if (!forecastData.length || !forecastEnabled) return;
+      if (!forecastData.length || !indicators.arima) return;
       const {ctx, scales:{x,y}, chartArea:{top, bottom}} = chart;
       ctx.save();
 
@@ -1081,7 +1119,7 @@ function buildForecastPlugin() {
 
 async function loadForecast(ticker, tf, offset) {
   forecastData = [];
-  if (!forecastEnabled || !mainChart || tf === "1s") return;
+  if (!indicators.arima || !mainChart || tf === "1s") return;
   const period = TF_PERIOD[tf] || "5d";
   try {
     const r = await fetch(API + `/api/forecast/${ticker}?interval=${tf}&period=${period}&n=20`);
@@ -1100,19 +1138,75 @@ async function loadForecast(ticker, tf, offset) {
   } catch(e) {}
 }
 
-function toggleForecast() {
-  forecastEnabled = !forecastEnabled;
-  document.getElementById("fcst-btn").classList.toggle("active", forecastEnabled);
-  if (forecastEnabled) {
-    const offset = forecastOffset || (candleData?._liveCandles?.length ?? chartZoom);
-    loadForecast(currentTicker, currentTF, offset);
-  } else {
-    forecastData = [];
-    if (mainChart) {
-      mainChart.options.scales.x.max = forecastOffset - 0.7;
-      mainChart.update("none");
+// ── INDICATORS UI ─────────────────────────────────────────────────────────────
+function setIndicator(key, val) {
+  indicators[key] = val;
+  saveIndicators();
+  applyIndicator(key, val);
+}
+
+function applyIndicator(key, val) {
+  switch (key) {
+    case "arima":
+      if (val) {
+        const off = forecastOffset || (candleData?._liveCandles?.length ?? chartZoom);
+        loadForecast(currentTicker, currentTF, off);
+      } else {
+        forecastData = [];
+        if (mainChart) {
+          mainChart.options.scales.x.max = (forecastOffset || chartZoom) - 0.7;
+          mainChart.update("none");
+        }
+      }
+      break;
+    case "ma20":
+      if (mainChart?.data.datasets[1]) {
+        mainChart.data.datasets[1].hidden = !val;
+        mainChart.update("none");
+      }
+      break;
+    case "ma50":
+      if (mainChart?.data.datasets[2]) {
+        mainChart.data.datasets[2].hidden = !val;
+        mainChart.update("none");
+      }
+      break;
+    case "volume":
+      if (mainChart) mainChart.update("none");
+      break;
+    case "rsi": {
+      const panel = document.getElementById("utility-panel");
+      if (panel) panel.style.display = val ? "flex" : "none";
+      if (val && candleData?._liveCandles?.length) drawRSI(candleData._liveCandles);
+      break;
     }
   }
+}
+
+function initIndicatorUI() {
+  Object.keys(indicators).forEach(key => {
+    const el = document.getElementById("ind-" + key);
+    if (el) el.checked = indicators[key];
+  });
+  // Restore collapsed state
+  const open = localStorage.getItem("td_ind_open") !== "0";
+  if (!open) _setIndicatorsPanelOpen(false);
+  // Apply RSI visibility immediately (other indicators applied via chart creation)
+  const panel = document.getElementById("utility-panel");
+  if (panel && !indicators.rsi) panel.style.display = "none";
+}
+
+function toggleIndicatorsPanel() {
+  const open = document.getElementById("indicators-content").style.maxHeight !== "0px";
+  _setIndicatorsPanelOpen(!open);
+  localStorage.setItem("td_ind_open", open ? "0" : "1");
+}
+
+function _setIndicatorsPanelOpen(open) {
+  const content = document.getElementById("indicators-content");
+  const arrow   = document.getElementById("ind-arrow");
+  content.style.maxHeight = open ? "300px" : "0px";
+  arrow.style.transform   = open ? "rotate(0deg)" : "rotate(-90deg)";
 }
 
 // ── DRAW FUNCTIONS ────────────────────────────────────────────────────────────
@@ -1131,9 +1225,8 @@ function buildCandlePlugins(candles, avg, isLive) {
       const maxVol   = candles.reduce((m,c) => Math.max(m, c.v||0), 1);
       const volZoneH = (bottom - top) * 0.18;
 
-      // Pass 1: volume bars (drawn first so candles render on top)
-      // zero-volume candles (pre/post-market) get a 1px stub so there are no gaps
-      candles.forEach((c,i) => {
+      // Pass 1: volume bars
+      if (indicators.volume) candles.forEach((c,i) => {
         const xPos = x.getPixelForValue(i);
         const barW = Math.max(2, (x.getPixelForValue(1)-x.getPixelForValue(0))*0.6);
         const volH = c.v > 0 ? Math.max(2, ((c.v||0) / maxVol) * volZoneH) : 1;
@@ -1240,8 +1333,8 @@ function drawMainChart(data) {
     type:"scatter",
     data: { labels:candles.map((_,i)=>i), datasets:[
       {data:candles.map((c,i)=>({x:i,y:c.c})), pointRadius:0, showLine:false},
-      {data:candles.map((c,i)=>({x:i,y:c.ma20})), borderColor:"#f0c040", borderWidth:1.5, pointRadius:0, showLine:true, tension:0.3, spanGaps:true},
-      {data:candles.map((c,i)=>({x:i,y:c.ma50})), borderColor:"#a060f0", borderWidth:1.5, pointRadius:0, showLine:true, tension:0.3, spanGaps:true}
+      {data:candles.map((c,i)=>({x:i,y:c.ma20})), borderColor:"#f0c040", borderWidth:1.5, pointRadius:0, showLine:true, tension:0.3, spanGaps:true, hidden:!indicators.ma20},
+      {data:candles.map((c,i)=>({x:i,y:c.ma50})), borderColor:"#a060f0", borderWidth:1.5, pointRadius:0, showLine:true, tension:0.3, spanGaps:true, hidden:!indicators.ma50}
     ]},
     options: buildChartOptions(candles, minP, maxP, false),
     plugins: [...buildCandlePlugins(candles, avg, false), buildForecastPlugin()]
@@ -1267,8 +1360,8 @@ function drawLiveChart(ticker, lastPrice) {
     type:"scatter",
     data:{ labels:candles.map((_,i)=>i), datasets:[
       {data:candles.map((c,i)=>({x:i,y:c.c})), pointRadius:0, showLine:false},
-      {data:ma20.map((v,i)=>({x:i,y:v})), borderColor:"#f0c040", borderWidth:1.5, pointRadius:0, showLine:true, tension:0.3, spanGaps:true},
-      {data:ma50.map((v,i)=>({x:i,y:v})), borderColor:"#a060f0", borderWidth:1.5, pointRadius:0, showLine:true, tension:0.3, spanGaps:true}
+      {data:ma20.map((v,i)=>({x:i,y:v})), borderColor:"#f0c040", borderWidth:1.5, pointRadius:0, showLine:true, tension:0.3, spanGaps:true, hidden:!indicators.ma20},
+      {data:ma50.map((v,i)=>({x:i,y:v})), borderColor:"#a060f0", borderWidth:1.5, pointRadius:0, showLine:true, tension:0.3, spanGaps:true, hidden:!indicators.ma50}
     ]},
     options: buildChartOptions(candles, minP, maxP, true),
     plugins: buildCandlePlugins(candles, avg, true)
