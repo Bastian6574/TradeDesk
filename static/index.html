@@ -421,7 +421,7 @@ function mkPanel(idx) {
            mainChart:null, rsiChart:null, candleData:null,
            forecastData:[], forecastOffset:0,
            liveWS:null, liveInterval:null, tickerInterval:null,
-           liveCandles:[], el:null };
+           liveCandles:[], el:null, _gen:0 };
 }
 
 // ── PANEL DOM ─────────────────────────────────────────────────────────────────
@@ -628,6 +628,7 @@ function applyUtilitySelect(p) {
 
 // ── STOP PANEL ────────────────────────────────────────────────────────────────
 function stopPanel(p) {
+  p._gen++;
   if (p.liveWS){p.liveWS.close();p.liveWS=null;}
   if (p.liveInterval){clearInterval(p.liveInterval);p.liveInterval=null;}
   if (p.tickerInterval){clearInterval(p.tickerInterval);p.tickerInterval=null;}
@@ -637,12 +638,14 @@ function stopPanel(p) {
 // ── LOAD MAIN CHART ───────────────────────────────────────────────────────────
 async function loadMainChart(p) {
   stopPanel(p);
+  const myGen=p._gen;
   if (p.tf==="1s"){await startLiveStream(p);return;}
   showLoading(p,true);
   const period=TF_PERIOD[p.tf]||"5d";
   try {
     const r=await fetch(API+`/api/chart/${p.ticker}?period=${period}&interval=${p.tf}`);
     const data=await r.json();
+    if (p._gen!==myGen){showLoading(p,false);return;}
     if (data.error){showLoading(p,false);return;}
     updateHeader(p,data);
     drawMainChart(p,data);
@@ -653,22 +656,25 @@ async function loadMainChart(p) {
     if (ai) ai.value=state.averages[p.ticker]||"";
     updateAvgLegend(p);
   } catch(e){console.warn(e);}
-  showLoading(p,false);
+  if (p._gen===myGen) showLoading(p,false);
 }
 
 // ── LIVE 1s STREAM ────────────────────────────────────────────────────────────
 async function startLiveStream(p) {
   p.liveCandles=[]; showLoading(p,true);
+  const myGen=p._gen;
   const binSym=toBinanceSymbol(p.ticker);
   try {
     const r=await fetch(API+`/api/chart/${p.ticker}?period=1d&interval=1m`);
     const seed=await r.json();
+    if (p._gen!==myGen){showLoading(p,false);return;}
     if (!seed.error){p.liveCandles=seed.candles.slice(-60).map(c=>({...c,live:false}));updateHeader(p,seed);}
-  } catch(e){}
+  } catch(e){if(p._gen!==myGen)return;}
   if (binSym) {
     p.liveWS=new WebSocket(`wss://stream.binance.com:9443/ws/${binSym}@kline_1s`);
-    p.liveWS.onopen=()=>{showLoading(p,false);setPanelLiveBadge(p,true);};
+    p.liveWS.onopen=()=>{if(p._gen!==myGen){p.liveWS.close();return;}showLoading(p,false);setPanelLiveBadge(p,true);};
     p.liveWS.onmessage=(evt)=>{
+      if (p._gen!==myGen) return;
       const k=JSON.parse(evt.data).k;
       const candle={t:k.t,o:parseFloat(k.o),h:parseFloat(k.h),l:parseFloat(k.l),c:parseFloat(k.c),v:parseFloat(k.v),live:!k.x};
       if (p.liveCandles.length&&p.liveCandles[p.liveCandles.length-1].live) p.liveCandles[p.liveCandles.length-1]=candle;
@@ -677,18 +683,20 @@ async function startLiveStream(p) {
       drawLiveChart(p,candle.c);
       drawUtility(p,p.liveCandles.slice(-p.chartZoom));
     };
-    p.liveWS.onerror=()=>{showLoading(p,false);startStockPoll(p);};
+    p.liveWS.onerror=()=>{if(p._gen!==myGen)return;showLoading(p,false);startStockPoll(p);};
   } else { showLoading(p,false); startStockPoll(p); }
 }
 
 async function startStockPoll(p) {
   setPanelLiveBadge(p,true);
+  const myGen=p._gen;
   let curSec=null,sOpen=null,sHigh=null,sLow=null;
   p.liveInterval=setInterval(async()=>{
+    if (p._gen!==myGen) return;
     try {
       const r=await fetch(API+`/api/chart/${p.ticker}?period=1d&interval=1m`);
       const d=await r.json();
-      if (d.error||!d.candles.length) return;
+      if (p._gen!==myGen||d.error||!d.candles.length) return;
       const price=d.last, now=Math.floor(Date.now()/1000)*1000;
       if (curSec!==now){
         if (curSec!==null){const prev=p.liveCandles[p.liveCandles.length-1];if(prev&&prev.live)prev.live=false;}
@@ -707,12 +715,13 @@ async function startStockPoll(p) {
 // ── TICKER POLL (non-1s TF) ───────────────────────────────────────────────────
 function startTickerPoll(p) {
   if (p.tickerInterval){clearInterval(p.tickerInterval);p.tickerInterval=null;}
+  const myGen=p._gen;
   p.tickerInterval=setInterval(async()=>{
-    if (!p.candleData||!p.mainChart) return;
+    if (p._gen!==myGen||!p.candleData||!p.mainChart) return;
     try {
       const r=await fetch(API+`/api/chart/${p.ticker}?period=1d&interval=1m`);
       const d=await r.json();
-      if (d.error||!d.candles.length) return;
+      if (p._gen!==myGen||d.error||!d.candles.length) return;
       updateLiveCandle(p,d.last,d.change_pct);
     } catch(e){}
   },updateIntervalMs);
