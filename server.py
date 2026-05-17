@@ -9,7 +9,24 @@ from flask import Flask, jsonify, send_from_directory, request
 from flask_cors import CORS
 import yfinance as yf
 import pandas as pd
-import json, os, subprocess
+import json, os, subprocess, time
+
+# ── CHART CACHE ───────────────────────────────────────────────────────────────
+_chart_cache = {}  # key -> (data, expires_at)
+
+_CACHE_TTL = {
+    "1m": 20, "5m": 60, "15m": 120,
+    "30m": 120, "1h": 300, "1d": 600
+}
+
+def _cache_get(key):
+    entry = _chart_cache.get(key)
+    if entry and time.time() < entry[1]:
+        return entry[0]
+    return None
+
+def _cache_set(key, data, ttl):
+    _chart_cache[key] = (data, time.time() + ttl)
 
 app = Flask(__name__, static_folder='static')
 CORS(app)
@@ -57,6 +74,10 @@ def resolve_ticker(ticker):
     return t + "-USD" if t in CRYPTO_TICKERS else t
 
 def fetch_chart_data(ticker, period="5d", interval="30m"):
+    cache_key = (ticker.upper(), period, interval)
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
     try:
         df = yf.Ticker(resolve_ticker(ticker)).history(period=period, interval=interval)
         if df.empty:
@@ -77,8 +98,10 @@ def fetch_chart_data(ticker, period="5d", interval="30m"):
             })
         last       = candles[-1]["c"]
         change_pct = ((last - candles[0]["c"]) / candles[0]["c"]) * 100
-        return {"ticker": ticker.upper(), "last": last,
-                "change_pct": round(change_pct, 2), "interval": interval, "candles": candles}
+        result = {"ticker": ticker.upper(), "last": last,
+                  "change_pct": round(change_pct, 2), "interval": interval, "candles": candles}
+        _cache_set(cache_key, result, _CACHE_TTL.get(interval, 60))
+        return result
     except Exception as e:
         return {"error": str(e)}
 
@@ -190,4 +213,4 @@ if __name__ == "__main__":
     print("  http://0.0.0.0:5000")
     print(f"  Access via: http://192.168.178.31:5000")
     print("=" * 55)
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)

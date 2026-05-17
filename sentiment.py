@@ -48,7 +48,8 @@ _state = {
         "label": "SCANNING",
         "buy_count": 0, "sell_count": 0,
         "neutral_count": 0, "noise_count": 0,
-        "total_count": 0, "last_update": None
+        "total_count": 0, "last_update": None,
+        "headlines": []
     }
 }
 
@@ -204,11 +205,16 @@ def _news_update():
     total = buy+sell+neutral+noise
     label = ("FILTERED" if total==0 or (buy==0 and sell==0)
              else "BULLISH" if buy>sell else "BEARISH" if sell>buy else "NEUTRAL")
+    ranked = ([a for a in arts if a["signal"]=="sell"] +
+              [a for a in arts if a["signal"]=="buy"] +
+              [a for a in arts if a["signal"]=="neutral"])
+    headlines = [{"title": a["title"], "signal": a["signal"]} for a in ranked[:3]]
     with _lock:
         _state["news"].update({
             "label":label, "buy_count":buy, "sell_count":sell,
             "neutral_count":neutral, "noise_count":noise,
-            "total_count":total, "last_update":datetime.now()
+            "total_count":total, "last_update":datetime.now(),
+            "headlines": headlines
         })
 
 def _news_loop():

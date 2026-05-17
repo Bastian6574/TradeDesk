@@ -404,6 +404,30 @@
   }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.2} }
 
+  /* News headline tooltip */
+  #news-tooltip {
+    position: fixed;
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    padding: 9px 11px;
+    font-family: var(--font);
+    font-size: 10px;
+    color: var(--text2);
+    line-height: 1.8;
+    max-width: 300px;
+    z-index: 200;
+    pointer-events: none;
+    display: none;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  }
+  #news-tooltip.visible { display: block; }
+  .nt-line { display: flex; gap: 7px; align-items: baseline; }
+  .nt-sig { font-size: 9px; flex-shrink: 0; letter-spacing: 1px; }
+  .nt-sig.sell    { color: var(--red); }
+  .nt-sig.buy     { color: var(--green); }
+  .nt-sig.neutral { color: var(--amber); }
+  .nt-title { color: var(--text); font-size: 10px; }
+
   /* Modal */
   #modal {
     position:fixed; inset:0; background:rgba(0,0,0,0.7);
@@ -578,6 +602,9 @@
   </div><!-- end center-right -->
 
 </div><!-- end main -->
+
+<!-- NEWS TOOLTIP -->
+<div id="news-tooltip"></div>
 
 <!-- MODAL -->
 <div id="modal" class="hidden">
@@ -1194,6 +1221,29 @@ document.getElementById("modal").addEventListener("click", e=>{ if(e.target.id==
 
 // ── SENTIMENT PANEL ──────────────────────────────────────────────────────────
 let sentimentTimer = null;
+let _newsHeadlines = [];
+
+(function initNewsTooltip() {
+  const widget  = document.getElementById("rp-news");
+  const tooltip = document.getElementById("news-tooltip");
+  widget.addEventListener("mouseenter", () => {
+    if (!_newsHeadlines.length) return;
+    tooltip.innerHTML = _newsHeadlines.map(h => {
+      const sig = h.signal === "sell" ? "▼SELL" : h.signal === "buy" ? "▲BUY" : "— NEU";
+      return `<div class="nt-line"><span class="nt-sig ${h.signal}">${sig}</span><span class="nt-title">${h.title}</span></div>`;
+    }).join("");
+    tooltip.classList.add("visible");
+  });
+  widget.addEventListener("mousemove", (e) => {
+    const tt = tooltip;
+    const pad = 10;
+    let left = e.clientX - tt.offsetWidth - pad;
+    if (left < pad) left = e.clientX + pad;
+    tt.style.left = left + "px";
+    tt.style.top  = Math.min(e.clientY - 10, window.innerHeight - tt.offsetHeight - pad) + "px";
+  });
+  widget.addEventListener("mouseleave", () => tooltip.classList.remove("visible"));
+}());
 
 async function fetchSentiment() {
   try {
@@ -1243,6 +1293,7 @@ function updateSentimentPanel(s) {
   }
 
   // NEWS
+  _newsHeadlines = s.news.headlines || [];
   const news = s.news;
   const newsDot = document.getElementById("rp-news-dot");
   const newsBadge = document.getElementById("rp-news-label");
