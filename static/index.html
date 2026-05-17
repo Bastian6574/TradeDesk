@@ -341,6 +341,7 @@
 <script>
 const API = "";
 const LIVE_MAX = 500;
+const N_FC = 20;
 const TF_PERIOD = { "1s":null,"1m":"1d","5m":"2d","15m":"5d","30m":"5d","1h":"1mo","1d":"3mo" };
 const LAYOUT_COUNT = { "1":1, "2h":2, "2v":2, "4":4 };
 
@@ -752,11 +753,9 @@ function updateLiveCandle(p, livePrice, changePct) {
     const newC={t:last.t+ivMs,o:livePrice,h:livePrice,l:livePrice,c:livePrice,v:0,ma20:null,ma50:null};
     candles.push(newC);
     if (candles.length>p.chartZoom) candles.shift();
-    if (p.forecastData.length>0){
-      p.forecastData.shift(); p.forecastOffset=candles.length;
-      if (p.mainChart) p.mainChart.options.scales.x.max=p.forecastData.length>0
-        ?candles.length-0.7+p.forecastData.length:candles.length-0.7;
-    } else if (p.mainChart) p.mainChart.options.scales.x.max=candles.length-0.7;
+    if (p.forecastData.length>0){p.forecastData.shift();}
+    p.forecastOffset=candles.length;
+    if (p.mainChart) p.mainChart.options.scales.x.max=candles.length-0.7+(indicators.arima?N_FC:0);
     if (indicators.arima) loadForecast(p,true);
   }
   const cur=candles[candles.length-1];
@@ -854,7 +853,7 @@ function buildChartOptions(p, candles, minP, maxP, isLive) {
       }
     },
     scales:{
-      x:{type:"linear",min:-0.3,max:candles.length-0.7+(indicators.arima&&p.forecastData.length?p.forecastData.length:0),grid:{color:"#1e253022"},
+      x:{type:"linear",min:-0.3,max:candles.length-0.7+(indicators.arima?N_FC:0),grid:{color:"#1e253022"},
          ticks:{color:"#3d5066",font:{family:"'JetBrains Mono'",size:9},maxTicksLimit:8,
            callback:(v)=>{const c=candles[Math.round(v)];if(!c)return"";const d=new Date(c.t);
              return p.tf==="1d"?d.toLocaleDateString("en-US",{month:"short",day:"numeric"}):
@@ -1005,8 +1004,7 @@ async function loadForecast(p, nocache=false) {
     const allP=p.forecastData.flatMap(f=>[f.ci_lo,f.ci_hi]);
     p.mainChart.options.scales.y.min=Math.min(p.mainChart.options.scales.y.min,Math.min(...allP)*0.999);
     p.mainChart.options.scales.y.max=Math.max(p.mainChart.options.scales.y.max,Math.max(...allP)*1.001);
-    p.mainChart.options.scales.x.max=offset+p.forecastData.length-0.7;
-    p.mainChart.update("none");
+    p.mainChart.update("none"); // x.max unchanged — N_FC slots pre-reserved
   } catch(e){}
 }
 
@@ -1064,7 +1062,7 @@ function drawRSI(p, candles) {
       ctx.setLineDash([]);ctx.restore();
     }
   };
-  const rsiXMax=candles.length-0.7+(indicators.arima&&p.forecastData.length?p.forecastData.length:0);
+  const rsiXMax=candles.length-0.7+(indicators.arima?N_FC:0);
   p.rsiChart=new Chart(canvas,{
     type:"scatter",
     data:{labels:candles.map((_,i)=>i),datasets:[{
@@ -1142,7 +1140,7 @@ function drawMACD(p, candles) {
         titleFont:{family:"'JetBrains Mono'"},bodyFont:{family:"'JetBrains Mono'",size:11}
       }},
       scales:{
-        x:{type:"linear",min:-0.3,max:candles.length-0.7+(indicators.arima&&p.forecastData.length?p.forecastData.length:0),grid:{color:"#1e253011"},ticks:{display:false}},
+        x:{type:"linear",min:-0.3,max:candles.length-0.7+(indicators.arima?N_FC:0),grid:{color:"#1e253011"},ticks:{display:false}},
         y:{position:"right",grid:{color:"#1e253011"},
            ticks:{color:"#3d5066",font:{family:"'JetBrains Mono'",size:8},callback:(v)=>v===0?"0":v.toFixed(2)}}
       }
@@ -1158,10 +1156,11 @@ function setIndicator(key, val) {
 }
 function applyIndicatorToPanel(p, key, val) {
   switch(key){
-    case"arima":
-      if (val) loadForecast(p);
-      else{p.forecastData=[];if(p.mainChart){p.mainChart.options.scales.x.max=(p.candleData?._liveCandles?.length??p.chartZoom)-0.7;p.mainChart.update("none");}}
-      break;
+    case"arima":{
+      const len=p.candleData?._liveCandles?.length??p.chartZoom;
+      if(val){if(p.mainChart){p.mainChart.options.scales.x.max=len-0.7+N_FC;p.mainChart.update("none");}loadForecast(p);}
+      else{p.forecastData=[];p.forecastOffset=0;if(p.mainChart){p.mainChart.options.scales.x.max=len-0.7;p.mainChart.update("none");}}
+      break;}
     case"ma20": if(p.mainChart?.data.datasets[1]){p.mainChart.data.datasets[1].hidden=!val;p.mainChart.update("none");}break;
     case"ma50": if(p.mainChart?.data.datasets[2]){p.mainChart.data.datasets[2].hidden=!val;p.mainChart.update("none");}break;
     case"volume": if(p.mainChart)p.mainChart.update("none");break;
@@ -1189,8 +1188,6 @@ async function reloadArima(e) {
   const icon=document.getElementById("arima-reload");
   if (!icon||icon.classList.contains("spinning")) return;
   icon.classList.add("spinning");
-  p.forecastData=[];
-  if (p.mainChart){p.mainChart.options.scales.x.max=(p.candleData?._liveCandles?.length??p.chartZoom)-0.7;p.mainChart.update("none");}
   const period=TF_PERIOD[p.tf]||"5d", offset=p.candleData?._liveCandles?.length??p.chartZoom;
   try {
     const r=await fetch(API+`/api/forecast/${p.ticker}?interval=${p.tf}&period=${period}&n=20&nocache=1`);
@@ -1202,8 +1199,7 @@ async function reloadArima(e) {
           const allP=p.forecastData.flatMap(f=>[f.ci_lo,f.ci_hi]);
           p.mainChart.options.scales.y.min=Math.min(p.mainChart.options.scales.y.min,Math.min(...allP)*0.999);
           p.mainChart.options.scales.y.max=Math.max(p.mainChart.options.scales.y.max,Math.max(...allP)*1.001);
-          p.mainChart.options.scales.x.max=offset+p.forecastData.length-0.7;
-          p.mainChart.update("none");
+          p.mainChart.update("none"); // x.max unchanged — N_FC pre-reserved
         }
       }
     }
