@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TradeDesk Builder</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg:      #0a0c0f;
+    --bg2:     #0f1318;
+    --bg3:     #151a20;
+    --border:  #1e2530;
+    --border2: #2a3340;
+    --text:    #c8d8e8;
+    --text2:   #6a8099;
+    --text3:   #3d5066;
+    --green:   #00d47e;
+    --green2:  #00a862;
+    --red:     #f03e3e;
+    --amber:   #f0a03e;
+    --blue:    #3e8ef0;
+    --font:    'JetBrains Mono', monospace;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:var(--font); font-size:12px; min-height:100vh; display:flex; flex-direction:column; }
+
+  #topbar { height:44px; background:var(--bg2); border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 20px; gap:16px; flex-shrink:0; }
+  .logo { font-size:14px; font-weight:600; color:var(--green); letter-spacing:2px; }
+  .logo span { color:var(--text2); }
+  .topbar-right { margin-left:auto; display:flex; gap:10px; align-items:center; }
+
+  #content { display:flex; flex:1; padding:20px; gap:20px; max-width:1100px; margin:0 auto; width:100%; }
+
+  .left-col { flex:1; display:flex; flex-direction:column; }
+
+  /* TABS */
+  .tab-bar { display:flex; gap:2px; border-bottom:1px solid var(--border); margin-bottom:16px; }
+  .tab-btn { padding:6px 16px; background:transparent; border:1px solid transparent; border-bottom:none; color:var(--text3); cursor:pointer; font-family:var(--font); font-size:10px; letter-spacing:2px; text-transform:uppercase; transition:all 0.15s; margin-bottom:-1px; }
+  .tab-btn:hover { color:var(--text2); }
+  .tab-btn.active { color:var(--green); border-color:var(--border); border-bottom-color:var(--bg2); background:var(--bg2); }
+
+  .tab-content { display:none; flex-direction:column; gap:16px; }
+  .tab-content.active { display:flex; }
+
+  /* PANELS */
+  .panel { background:var(--bg2); border:1px solid var(--border); padding:16px 20px; }
+  .panel-title { font-size:10px; letter-spacing:2px; color:var(--text3); text-transform:uppercase; margin-bottom:14px; padding-bottom:8px; border-bottom:1px solid var(--border); }
+
+  /* INPUTS */
+  input[type="text"], input[type="number"] { background:var(--bg3); border:1px solid var(--border); color:var(--text); padding:6px 10px; font-family:var(--font); font-size:11px; outline:none; letter-spacing:1px; transition:border-color 0.15s; }
+  input[type="text"]:focus, input[type="number"]:focus { border-color:var(--blue); }
+  input[type="text"]::placeholder, input[type="number"]::placeholder { color:var(--text3); }
+  input[type="text"] { text-transform:uppercase; }
+  input[type="range"] { width:100%; cursor:pointer; accent-color:var(--amber); }
+
+  .btn { padding:6px 14px; background:transparent; border:1px solid var(--border); color:var(--text2); cursor:pointer; font-family:var(--font); font-size:10px; letter-spacing:1px; transition:all 0.15s; white-space:nowrap; }
+  .btn:hover { border-color:var(--border2); color:var(--text); }
+  .btn.primary { border-color:var(--green2); color:var(--green); }
+  .btn.primary:hover { background:var(--green2); color:#000; }
+  .btn.danger { border-color:transparent; color:var(--text3); }
+  .btn.danger:hover { border-color:var(--red); color:var(--red); }
+  .btn.sel { border-color:var(--amber); color:var(--amber); }
+
+  /* ROWS */
+  .row { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .row:last-child { margin-bottom:0; }
+  .row-label { font-size:10px; color:var(--text2); letter-spacing:1px; min-width:90px; flex-shrink:0; }
+  .row-hint  { font-size:10px; color:var(--text3); }
+
+  .slider-row { display:flex; align-items:center; gap:12px; margin-bottom:10px; }
+  .slider-val { font-size:11px; min-width:100px; text-align:right; }
+  .slider-val.amber { color:var(--amber); }
+  .slider-val.blue  { color:var(--blue); }
+
+  .preset-row { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .hint-text { font-size:10px; color:var(--text3); line-height:1.7; margin-top:8px; }
+
+  /* TICKER TAGS */
+  .ticker-grid { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; min-height:36px; }
+  .ticker-tag { background:var(--bg3); border:1px solid var(--border2); color:var(--text); padding:4px 8px 4px 10px; font-size:11px; letter-spacing:1px; display:flex; align-items:center; gap:6px; cursor:default; }
+  .ticker-tag:hover { border-color:var(--red); }
+  .ticker-tag .rm { color:var(--text3); cursor:pointer; font-size:14px; line-height:1; }
+  .ticker-tag .rm:hover { color:var(--red); }
+  .ticker-tag.dragging { opacity:0.4; }
+  .ticker-tag.drag-over { border-color:var(--green); }
+  .add-row { display:flex; gap:8px; }
+
+  /* INTERVAL */
+  .interval-group { display:flex; gap:6px; align-items:center; }
+  .interval-group input { width:90px; }
+  .unit-btn { padding:6px 10px; background:transparent; border:1px solid var(--border); color:var(--text3); cursor:pointer; font-family:var(--font); font-size:10px; letter-spacing:1px; transition:all 0.15s; }
+  .unit-btn:hover { border-color:var(--border2); color:var(--text2); }
+  .unit-btn.active { border-color:var(--blue); color:var(--blue); }
+
+  /* DEPLOY */
+  #deploy-panel { background:var(--bg2); border:1px solid var(--border); padding:20px; width:260px; flex-shrink:0; display:flex; flex-direction:column; gap:14px; }
+  .deploy-btn { width:100%; padding:12px; background:var(--green2); border:1px solid var(--green); color:#000; cursor:pointer; font-family:var(--font); font-size:12px; font-weight:600; letter-spacing:2px; transition:all 0.15s; }
+  .deploy-btn:hover { background:var(--green); }
+  .deploy-btn:disabled { background:var(--bg3); border-color:var(--border); color:var(--text3); cursor:not-allowed; }
+  .reload-btn { width:100%; padding:8px; background:transparent; border:1px solid var(--border); color:var(--text2); cursor:pointer; font-family:var(--font); font-size:10px; letter-spacing:1px; transition:all 0.15s; }
+  .reload-btn:hover { border-color:var(--amber); color:var(--amber); }
+  .divider { height:1px; background:var(--border); }
+  #log { font-size:10px; color:var(--text3); line-height:1.8; flex:1; overflow-y:auto; max-height:320px; }
+  .log-line { display:block; }
+  .log-line.ok   { color:var(--green); }
+  .log-line.err  { color:var(--red); }
+  .log-line.info { color:var(--text2); }
+  .status-dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--text3); margin-right:6px; vertical-align:middle; }
+  .status-dot.live { background:var(--green); animation:pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  a { color:var(--blue); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div class="logo">TradeDesk <span>/ Builder</span></div>
+  <div class="topbar-right"><a href="/" class="btn">← DASHBOARD</a></div>
+</div>
+
+<div id="content">
+  <div class="left-col">
+
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="switchTab('defaults')">Defaults</button>
+      <button class="tab-btn" onclick="switchTab('chart')">Chart Widget</button>
+      <button class="tab-btn" onclick="switchTab('sidebar')">Sidebar</button>
+    </div>
+
+    <!-- ── DEFAULTS TAB ── -->
+    <div class="tab-content active" id="tab-defaults">
+
+      <div class="panel">
+        <div class="panel-title">Watchlist — Default Tickers</div>
+        <div class="ticker-grid" id="ticker-grid"></div>
+        <div class="add-row">
+          <input type="text" id="new-ticker" placeholder="TICKER" maxlength="10" style="width:110px" onkeydown="if(event.key==='Enter') addTicker()">
+          <button class="btn primary" onclick="addTicker()">+ ADD</button>
+          <button class="btn danger" onclick="clearAll()">CLEAR ALL</button>
+        </div>
+        <div class="hint-text">Drag to reorder. First ticker = MON 1 default.</div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Monitor Defaults</div>
+        <div class="row">
+          <span class="row-label">MON 1</span>
+          <input type="text" id="mon1" placeholder="BTC" maxlength="10" style="width:100px">
+          <span class="row-hint">Main display</span>
+        </div>
+        <div class="row">
+          <span class="row-label">MON 2</span>
+          <input type="text" id="mon2" placeholder="NVDA" maxlength="10" style="width:100px">
+          <span class="row-hint">Second screen</span>
+        </div>
+        <div class="row">
+          <span class="row-label">MON 3</span>
+          <input type="text" id="mon3" placeholder="SPY" maxlength="10" style="width:100px">
+          <span class="row-hint">Third screen</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Default Timeframe</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="btn tf-opt" data-tf="1s"  onclick="selectTF(this)">1s</button>
+          <button class="btn tf-opt" data-tf="1m"  onclick="selectTF(this)">1m</button>
+          <button class="btn tf-opt" data-tf="5m"  onclick="selectTF(this)">5m</button>
+          <button class="btn tf-opt" data-tf="15m" onclick="selectTF(this)">15m</button>
+          <button class="btn tf-opt sel" data-tf="30m" onclick="selectTF(this)">30m</button>
+          <button class="btn tf-opt" data-tf="1h"  onclick="selectTF(this)">1h</button>
+          <button class="btn tf-opt" data-tf="1d"  onclick="selectTF(this)">D</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ── CHART WIDGET TAB ── -->
+    <div class="tab-content" id="tab-chart">
+
+      <div class="panel">
+        <div class="panel-title">Visible Candles (Zoom)</div>
+        <div class="slider-row">
+          <input type="range" id="zoom-range" min="3" max="500" step="1" value="150" oninput="updateZoomLabel(this.value)">
+          <span class="slider-val amber" id="zoom-label">150 candles</span>
+        </div>
+        <div class="preset-row">
+          <button class="btn" onclick="setZoom(3)">3</button>
+          <button class="btn" onclick="setZoom(5)">5</button>
+          <button class="btn" onclick="setZoom(10)">10</button>
+          <button class="btn" onclick="setZoom(20)">20</button>
+          <button class="btn" onclick="setZoom(60)">60</button>
+          <button class="btn" onclick="setZoom(150)">150</button>
+          <button class="btn" onclick="setZoom(300)">300</button>
+          <button class="btn" onclick="setZoom(500)">500</button>
+        </div>
+        <div class="hint-text">Minimum 3 candles. Scroll wheel on chart adjusts zoom live.</div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Live Candle Update Interval</div>
+        <div class="row">
+          <span class="row-label">Interval</span>
+          <div class="interval-group">
+            <input type="number" id="update-val" value="1000" min="50" max="60000" step="50" oninput="updateIntervalHint()">
+            <button class="unit-btn active" id="unit-ms" onclick="selectUnit('ms')">ms</button>
+            <button class="unit-btn" id="unit-s" onclick="selectUnit('s')">sec</button>
+          </div>
+          <span class="row-hint" id="interval-hint">= 1.0s</span>
+        </div>
+        <div class="preset-row">
+          <button class="btn" onclick="setIntervalPreset(100)">100ms</button>
+          <button class="btn" onclick="setIntervalPreset(250)">250ms</button>
+          <button class="btn" onclick="setIntervalPreset(500)">500ms</button>
+          <button class="btn" onclick="setIntervalPreset(1000)">1s</button>
+          <button class="btn" onclick="setIntervalPreset(2000)">2s</button>
+          <button class="btn" onclick="setIntervalPreset(5000)">5s</button>
+        </div>
+        <div class="hint-text">
+          How often the live candle wick updates on non-1s timeframes.<br>
+          100ms = very fast. 500ms = good balance. 1s = default.<br>
+          <span style="color:var(--amber)">⚠ Below 250ms may strain the Pi's CPU/network.</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Utility Curves</div>
+        <div class="row">
+          <span class="row-label">Active Curve</span>
+          <div style="display:flex;gap:6px;">
+            <button class="btn sel" id="curve-rsi"  onclick="selectCurve('rsi')">RSI</button>
+            <button class="btn" id="curve-macd" onclick="selectCurve('macd')" style="opacity:0.4;cursor:not-allowed;" disabled title="Coming soon">MACD</button>
+            <button class="btn" id="curve-vol"  onclick="selectCurve('vol')"  style="opacity:0.4;cursor:not-allowed;" disabled title="Coming soon">VOL</button>
+            <button class="btn" id="curve-none" onclick="selectCurve('none')">OFF</button>
+          </div>
+        </div>
+        <div class="row" id="rsi-period-row">
+          <span class="row-label">RSI Period</span>
+          <input type="number" id="rsi-period" value="14" min="2" max="50" step="1" style="width:70px" oninput="updateRSIPeriodHint()">
+          <span class="row-hint" id="rsi-period-hint">Standard: 14</span>
+        </div>
+        <div class="row">
+          <span class="row-label">Panel Height</span>
+          <div style="display:flex;gap:6px;align-items:center;flex:1;">
+            <input type="range" id="utility-height-range" min="60" max="200" step="10" value="100"
+              oninput="updateUtilityHeightLabel(this.value)" style="flex:1;accent-color:var(--blue)">
+            <span style="color:var(--blue);font-size:11px;min-width:50px;text-align:right;" id="utility-height-label">100 px</span>
+          </div>
+        </div>
+        <div class="hint-text">More curves coming soon — MACD, Volume, Stochastic.</div>
+      </div>
+
+    </div>
+
+    <!-- ── SIDEBAR TAB ── -->
+    <div class="tab-content" id="tab-sidebar">
+
+      <div class="panel">
+        <div class="panel-title">Sidebar Width</div>
+        <div class="slider-row">
+          <input type="range" id="sidebar-range" min="140" max="420" step="10" value="260" oninput="updateSidebarLabel(this.value)" style="accent-color:var(--blue)">
+          <span class="slider-val blue" id="sidebar-label">260 px</span>
+        </div>
+        <div class="preset-row">
+          <button class="btn" onclick="setSidebar(140)">Narrow</button>
+          <button class="btn" onclick="setSidebar(200)">Small</button>
+          <button class="btn" onclick="setSidebar(260)">Default</button>
+          <button class="btn" onclick="setSidebar(320)">Wide</button>
+          <button class="btn" onclick="setSidebar(420)">Extra</button>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- DEPLOY -->
+  <div id="deploy-panel">
+    <div class="panel-title">Deploy</div>
+    <div>
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-text" style="font-size:10px;color:var(--text2);letter-spacing:1px;">CHECKING...</span>
+    </div>
+    <div class="divider"></div>
+    <button class="deploy-btn" id="deploy-btn" onclick="deploy()">▶ DEPLOY</button>
+    <button class="reload-btn" onclick="reloadOnly()">↺ RELOAD ONLY</button>
+    <div class="divider"></div>
+    <div id="log"><span class="log-line info">Ready.</span></div>
+  </div>
+
+</div>
+
+<script>
+const API = "";
+let watchlist        = [];
+let defaultTF        = "30m";
+let chartZoom        = 150;
+let sidebarWidth     = 260;
+let updateIntervalMs = 1000;
+let currentUnit      = "ms";
+let activeCurve      = "rsi";
+let rsiPeriod        = 14;
+let utilityHeight    = 100;
+
+// ── TABS ──────────────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll(".tab-btn").forEach(b => {
+    b.classList.toggle("active", b.getAttribute("onclick").includes("'" + name + "'"));
+  });
+  document.querySelectorAll(".tab-content").forEach(el => {
+    el.classList.toggle("active", el.id === "tab-" + name);
+  });
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+async function init() {
+  await loadState();
+  checkServer();
+}
+
+async function loadState() {
+  try {
+    const r = await fetch(API + "/api/state");
+    const s = await r.json();
+    watchlist = s.watchlist || ["BTC","AAPL","NVDA","TSLA","MSFT","AMZN","META","GOOGL","SPY"];
+
+    const mons = s.monitors || {};
+    document.getElementById("mon1").value = (mons["1"] || mons[1] || "BTC").toUpperCase();
+    document.getElementById("mon2").value = (mons["2"] || mons[2] || "NVDA").toUpperCase();
+    document.getElementById("mon3").value = (mons["3"] || mons[3] || "SPY").toUpperCase();
+
+    if (s.chart_zoom)       setZoom(s.chart_zoom);
+    if (s.sidebar_width)    setSidebar(s.sidebar_width);
+    if (s.update_interval)  setIntervalPreset(s.update_interval);
+    if (s.rsi_period)       { rsiPeriod = s.rsi_period; document.getElementById("rsi-period").value = rsiPeriod; }
+    if (s.utility_height)   { utilityHeight = s.utility_height; document.getElementById("utility-height-range").value = utilityHeight; updateUtilityHeightLabel(utilityHeight); }
+    if (s.active_curve)     selectCurve(s.active_curve, true);
+    if (s.default_tf) {
+      defaultTF = s.default_tf;
+      document.querySelectorAll(".tf-opt").forEach(b => b.classList.toggle("sel", b.dataset.tf === defaultTF));
+    }
+
+    renderTickers();
+    log("State loaded.", "info");
+  } catch(e) { log("Could not load state: " + e.message, "err"); }
+}
+
+async function checkServer() {
+  try {
+    await fetch(API + "/api/state");
+    document.getElementById("status-dot").classList.add("live");
+    document.getElementById("status-text").textContent = "SERVER ONLINE";
+  } catch(e) {
+    document.getElementById("status-text").textContent = "SERVER OFFLINE";
+  }
+}
+
+// ── WATCHLIST ─────────────────────────────────────────────────────────────────
+function renderTickers() {
+  const grid = document.getElementById("ticker-grid");
+  grid.innerHTML = "";
+  watchlist.forEach((t, i) => {
+    const tag = document.createElement("div");
+    tag.className = "ticker-tag";
+    tag.draggable = true;
+    tag.innerHTML = `${t} <span class="rm" onclick="removeTicker(${i})">×</span>`;
+    tag.addEventListener("dragstart", e => { e.dataTransfer.setData("text/plain", i); tag.classList.add("dragging"); });
+    tag.addEventListener("dragend",   () => tag.classList.remove("dragging"));
+    tag.addEventListener("dragover",  e => { e.preventDefault(); tag.classList.add("drag-over"); });
+    tag.addEventListener("dragleave", () => tag.classList.remove("drag-over"));
+    tag.addEventListener("drop", e => {
+      e.preventDefault(); tag.classList.remove("drag-over");
+      const from = parseInt(e.dataTransfer.getData("text/plain")), to = i;
+      if (from !== to) { const m = watchlist.splice(from,1)[0]; watchlist.splice(to,0,m); renderTickers(); }
+    });
+    grid.appendChild(tag);
+  });
+}
+
+function addTicker() {
+  const inp = document.getElementById("new-ticker");
+  const val = inp.value.trim().toUpperCase();
+  if (!val) return;
+  if (watchlist.includes(val)) { log(val + " already in list.", "err"); inp.value=""; return; }
+  watchlist.push(val); inp.value = "";
+  renderTickers(); log("Added " + val, "info");
+}
+
+function removeTicker(i) {
+  const t = watchlist[i]; watchlist.splice(i,1);
+  renderTickers(); log("Removed " + t, "info");
+}
+
+function clearAll() {
+  if (!confirm("Clear entire watchlist?")) return;
+  watchlist = []; renderTickers(); log("Watchlist cleared.", "info");
+}
+
+// ── TIMEFRAME ─────────────────────────────────────────────────────────────────
+function selectTF(btn) {
+  document.querySelectorAll(".tf-opt").forEach(b => b.classList.remove("sel"));
+  btn.classList.add("sel");
+  defaultTF = btn.dataset.tf;
+}
+
+// ── ZOOM ──────────────────────────────────────────────────────────────────────
+function updateZoomLabel(v) {
+  chartZoom = parseInt(v);
+  document.getElementById("zoom-label").textContent = chartZoom + " candles";
+}
+function setZoom(v) {
+  chartZoom = parseInt(v);
+  document.getElementById("zoom-range").value = v;
+  updateZoomLabel(v);
+}
+
+// ── SIDEBAR ───────────────────────────────────────────────────────────────────
+function updateSidebarLabel(v) {
+  sidebarWidth = parseInt(v);
+  document.getElementById("sidebar-label").textContent = v + " px";
+}
+function setSidebar(v) {
+  sidebarWidth = parseInt(v);
+  document.getElementById("sidebar-range").value = v;
+  updateSidebarLabel(v);
+}
+
+// ── UPDATE INTERVAL ───────────────────────────────────────────────────────────
+function selectUnit(unit) {
+  currentUnit = unit;
+  document.getElementById("unit-ms").classList.toggle("active", unit==="ms");
+  document.getElementById("unit-s").classList.toggle("active",  unit==="s");
+  updateIntervalHint();
+}
+
+function updateIntervalHint() {
+  const raw = parseInt(document.getElementById("update-val").value) || 1000;
+  updateIntervalMs = Math.max(50, currentUnit === "s" ? raw * 1000 : raw);
+  document.getElementById("interval-hint").textContent = "= " + (updateIntervalMs/1000).toFixed(updateIntervalMs < 1000 ? 1 : 0) + "s";
+}
+
+function setIntervalPreset(ms) {
+  updateIntervalMs = ms;
+  document.getElementById("update-val").value = ms;
+  selectUnit("ms");
+}
+
+// ── UTILITY CURVES ────────────────────────────────────────────────────────────
+function selectCurve(name, silent) {
+  activeCurve = name;
+  ["rsi","macd","vol","none"].forEach(c => {
+    const el = document.getElementById("curve-" + c);
+    if (el) el.classList.toggle("sel", c === name);
+  });
+  document.getElementById("rsi-period-row").style.display = name === "rsi" ? "flex" : "none";
+  if (!silent) log("Curve set to: " + name.toUpperCase(), "info");
+}
+
+function updateRSIPeriodHint() {
+  rsiPeriod = parseInt(document.getElementById("rsi-period").value) || 14;
+  const hint = rsiPeriod === 14 ? "Standard: 14" : rsiPeriod < 10 ? "Fast / noisy" : rsiPeriod > 20 ? "Slow / smooth" : "";
+  document.getElementById("rsi-period-hint").textContent = hint;
+}
+
+function updateUtilityHeightLabel(v) {
+  utilityHeight = parseInt(v);
+  document.getElementById("utility-height-label").textContent = v + " px";
+}
+
+// ── DEPLOY ────────────────────────────────────────────────────────────────────
+async function deploy() {
+  const btn = document.getElementById("deploy-btn");
+  btn.disabled = true; btn.textContent = "DEPLOYING...";
+  log("─── Deploy started ───", "info");
+
+  const mon1 = document.getElementById("mon1").value.trim().toUpperCase() || "BTC";
+  const mon2 = document.getElementById("mon2").value.trim().toUpperCase() || "NVDA";
+  const mon3 = document.getElementById("mon3").value.trim().toUpperCase() || "SPY";
+
+  [mon1,mon2,mon3].forEach(t => { if (t && !watchlist.includes(t)) watchlist.unshift(t); });
+  renderTickers();
+
+  try {
+    const r1 = await fetch(API+"/api/watchlist",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tickers:watchlist})});
+    if (!r1.ok) throw new Error("Watchlist failed");
+    log("✓ Watchlist (" + watchlist.length + " tickers)", "ok");
+
+    const r2 = await fetch(API+"/api/state",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        monitors:{"1":mon1,"2":mon2,"3":mon3}, active_monitor:1, active_ticker:mon1,
+        default_tf:defaultTF, chart_zoom:chartZoom, sidebar_width:sidebarWidth,
+        update_interval:updateIntervalMs, active_curve:activeCurve,
+        rsi_period:rsiPeriod, utility_height:utilityHeight, right_panel_width:200
+      })});
+    if (!r2.ok) throw new Error("State failed");
+    log("✓ Settings saved", "ok");
+    log("  MON1="+mon1+" MON2="+mon2+" MON3="+mon3, "info");
+    log("  TF="+defaultTF+" ZOOM="+chartZoom+" SIDEBAR="+sidebarWidth+"px UPDATE="+updateIntervalMs+"ms", "info");
+
+    const r3 = await fetch(API+"/api/reload",{method:"POST"});
+    if (r3.ok) log("✓ Dashboard reloaded!", "ok");
+    else log("⚠ Use reload.bat manually", "info");
+
+    log("─── Done ───", "ok");
+  } catch(e) { log("✗ " + e.message, "err"); }
+
+  btn.disabled = false; btn.textContent = "▶ DEPLOY";
+}
+
+async function reloadOnly() {
+  log("Reloading...", "info");
+  try {
+    const r = await fetch(API+"/api/reload",{method:"POST"});
+    log(r.ok ? "✓ Reloaded!" : "⚠ Reload unavailable", r.ok ? "ok" : "info");
+  } catch(e) { log("✗ "+e.message,"err"); }
+}
+
+function log(msg, type="info") {
+  const el = document.getElementById("log");
+  const line = document.createElement("span");
+  line.className = "log-line " + type;
+  line.textContent = new Date().toLocaleTimeString("en-US",{hour12:false}) + "  " + msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+init();
+</script>
+</body>
+</html>
