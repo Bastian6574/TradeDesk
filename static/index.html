@@ -421,7 +421,8 @@ function mkPanel(idx) {
            mainChart:null, rsiChart:null, candleData:null,
            forecastData:[], forecastOffset:0,
            liveWS:null, liveInterval:null, tickerInterval:null,
-           liveCandles:[], el:null, _gen:0 };
+           liveCandles:[], el:null, _gen:0,
+           _offline:false, _offlineTimer:null };
 }
 
 // ── PANEL DOM ─────────────────────────────────────────────────────────────────
@@ -434,9 +435,9 @@ function buildPanelEl(p) {
       <div class="main-ticker" id="main-ticker-${i}">—</div>
       <div class="main-price"  id="main-price-${i}">—</div>
       <div class="main-change" id="main-change-${i}"></div>
-      <div class="live-badge" id="live-badge-${i}" style="display:none;align-items:center;gap:5px;margin-left:4px;">
-        <span style="width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;animation:pulse 1s infinite;"></span>
-        <span style="font-size:10px;color:var(--green);letter-spacing:1px;">LIVE</span>
+      <div id="status-badge-${i}" style="display:none;align-items:center;gap:5px;margin-left:4px;">
+        <span id="status-dot-${i}" style="width:7px;height:7px;border-radius:50%;display:inline-block;"></span>
+        <span id="status-text-${i}" style="font-size:10px;letter-spacing:1px;"></span>
       </div>
       <div class="legend">
         <div class="legend-item"><div class="legend-dot" style="background:var(--ma20)"></div>MA20</div>
@@ -629,10 +630,12 @@ function applyUtilitySelect(p) {
 // ── STOP PANEL ────────────────────────────────────────────────────────────────
 function stopPanel(p) {
   p._gen++;
+  p._offline=false;
+  if (p._offlineTimer){clearTimeout(p._offlineTimer);p._offlineTimer=null;}
   if (p.liveWS){p.liveWS.close();p.liveWS=null;}
   if (p.liveInterval){clearInterval(p.liveInterval);p.liveInterval=null;}
   if (p.tickerInterval){clearInterval(p.tickerInterval);p.tickerInterval=null;}
-  setPanelLiveBadge(p,false);
+  setPanelTradingBadge(p,false);
 }
 
 // ── LOAD MAIN CHART ───────────────────────────────────────────────────────────
@@ -672,7 +675,7 @@ async function startLiveStream(p) {
   } catch(e){if(p._gen!==myGen)return;}
   if (binSym) {
     p.liveWS=new WebSocket(`wss://stream.binance.com:9443/ws/${binSym}@kline_1s`);
-    p.liveWS.onopen=()=>{if(p._gen!==myGen){p.liveWS.close();return;}showLoading(p,false);setPanelLiveBadge(p,true);};
+    p.liveWS.onopen=()=>{if(p._gen!==myGen){p.liveWS.close();return;}showLoading(p,false);setPanelTradingBadge(p,"trading");};
     p.liveWS.onmessage=(evt)=>{
       if (p._gen!==myGen) return;
       const k=JSON.parse(evt.data).k;
@@ -688,7 +691,7 @@ async function startLiveStream(p) {
 }
 
 async function startStockPoll(p) {
-  setPanelLiveBadge(p,true);
+  setPanelTradingBadge(p,"trading");
   const myGen=p._gen;
   let curSec=null,sOpen=null,sHigh=null,sLow=null;
   p.liveInterval=setInterval(async()=>{
@@ -733,7 +736,7 @@ function updateLiveCandle(p, livePrice, changePct) {
   if (!candles.length) return;
   const last=candles[candles.length-1], ivMs=tfIntervalMs(p.tf);
   if (ivMs>0&&Date.now()>=last.t+ivMs) {
-    if (Date.now()-last.t>ivMs*5){loadMainChart(p);return;}
+    if (Date.now()-last.t>ivMs*5){setOffline(p);return;}
     const newC={t:last.t+ivMs,o:livePrice,h:livePrice,l:livePrice,c:livePrice,v:0,ma20:null,ma50:null};
     candles.push(newC);
     if (candles.length>p.chartZoom) candles.shift();
@@ -1209,7 +1212,44 @@ function updateStatusBar(p, c) {
   document.getElementById("st-close-"+p.idx).textContent=fmt(c.c);
 }
 function showLoading(p, v) { const el=document.getElementById("loading-"+p.idx);if(el)el.classList.toggle("hidden",!v); }
-function setPanelLiveBadge(p, v) { const el=document.getElementById("live-badge-"+p.idx);if(el)el.style.display=v?"flex":"none"; }
+function setPanelTradingBadge(p, mode) {
+  const badge=document.getElementById("status-badge-"+p.idx); if(!badge)return;
+  if(!mode){badge.style.display="none";return;}
+  const dot=document.getElementById("status-dot-"+p.idx);
+  const txt=document.getElementById("status-text-"+p.idx);
+  badge.style.display="flex";
+  if(mode==="offline"){
+    dot.style.cssText="width:7px;height:7px;border-radius:50%;background:var(--red);display:inline-block;animation:none;";
+    txt.style.color="var(--red)";txt.textContent="OFFLINE";
+  } else {
+    dot.style.cssText="width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;animation:pulse 1s infinite;";
+    txt.style.color="var(--green)";txt.textContent="TRADING";
+  }
+}
+function setOffline(p) {
+  if(p._offline)return;
+  p._offline=true;
+  if(p.tickerInterval){clearInterval(p.tickerInterval);p.tickerInterval=null;}
+  setPanelTradingBadge(p,"offline");
+  startOfflineCheck(p);
+}
+function startOfflineCheck(p) {
+  if(p._offlineTimer)clearTimeout(p._offlineTimer);
+  const myGen=p._gen;
+  p._offlineTimer=setTimeout(async()=>{
+    if(p._gen!==myGen)return;
+    try{
+      const r=await fetch(API+`/api/chart/${p.ticker}?period=1d&interval=1m`);
+      const d=await r.json();
+      if(p._gen!==myGen)return;
+      if(!d.error&&d.candles&&d.candles.length){
+        const lastTs=d.candles[d.candles.length-1].t;
+        if(Date.now()-lastTs<5*60*1000){p._offline=false;loadMainChart(p);return;}
+      }
+    }catch(e){}
+    startOfflineCheck(p);
+  },5*60*1000);
+}
 function updateAvgLegend(p) {
   const avg=state.averages[p.ticker];
   const el=document.getElementById("avg-legend-"+p.idx);if(el)el.style.display=avg?"flex":"none";
