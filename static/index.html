@@ -775,6 +775,8 @@ function stopPanel(p) {
   p._offline=false;
   p.candleData=null;
   p._liveCount=0;
+  if (p.mainChart){p.mainChart.destroy();p.mainChart=null;}
+  if (p.rsiChart){p.rsiChart.destroy();p.rsiChart=null;}
   if (p._offlineTimer){clearTimeout(p._offlineTimer);p._offlineTimer=null;}
   if (p.liveWS){p.liveWS.close();p.liveWS=null;}
   if (p.liveInterval){clearInterval(p.liveInterval);p.liveInterval=null;}
@@ -1563,13 +1565,7 @@ function drawRSI(p, candles) {
   const panel=document.getElementById("utility-panel-"+p.idx);
   if (!panel||panel.style.display==="none") return;
   const wrap=document.getElementById("utility-canvas-wrap-"+p.idx);
-  const W=wrap.clientWidth-20, H=wrap.clientHeight-4;
-  if (W<=0||H<=0) return;
-  if (p.rsiChart){p.rsiChart.destroy();p.rsiChart=null;}
-  const oldC=document.getElementById("utility-canvas-"+p.idx);
-  const canvas=document.createElement("canvas");
-  canvas.id="utility-canvas-"+p.idx; canvas.width=W; canvas.height=H;
-  oldC.replaceWith(canvas);
+  if (!wrap) return;
   const rsiVals=calcRSI(candles,p.rsiPeriod);
   const lastRSI=rsiVals.filter(v=>v!==null).pop();
   if (lastRSI!==undefined){
@@ -1582,6 +1578,22 @@ function drawRSI(p, candles) {
       else{zoneEl.textContent="";zoneEl.style.color="";}
     }
   }
+  const rsiXMax=candles.length-0.7+(indicators.arima?N_FC:0);
+  // Reuse existing chart — avoid destroying and recreating Chart.js instance every tick
+  if (p.rsiChart&&document.contains(p.rsiChart.canvas)){
+    p.rsiChart.data.datasets[0].data=rsiVals.map((v,i)=>({x:i,y:v}));
+    p.rsiChart.options.scales.x.max=rsiXMax;
+    p.rsiChart.update("none");
+    return;
+  }
+  const W=wrap.clientWidth-20, H=wrap.clientHeight-4;
+  if (W<=0||H<=0) return;
+  if (p.rsiChart){p.rsiChart.destroy();p.rsiChart=null;}
+  const oldC=document.getElementById("utility-canvas-"+p.idx);
+  if (!oldC) return;
+  const canvas=document.createElement("canvas");
+  canvas.id="utility-canvas-"+p.idx; canvas.width=W; canvas.height=H;
+  oldC.replaceWith(canvas);
   const zonesPlugin={
     id:"rsiZones-"+p.idx,
     beforeDatasetsDraw(chart){
@@ -1598,7 +1610,6 @@ function drawRSI(p, candles) {
       ctx.setLineDash([]);ctx.restore();
     }
   };
-  const rsiXMax=candles.length-0.7+(indicators.arima?N_FC:0);
   p.rsiChart=new Chart(canvas,{
     type:"scatter",
     data:{labels:candles.map((_,i)=>i),datasets:[{
@@ -1629,32 +1640,45 @@ function drawMACD(p, candles) {
   if (!candles||candles.length<3) return;
   const {macdLine,signal,hist}=calcMACD(candles);
   const wrap=document.getElementById("utility-canvas-wrap-"+p.idx);
-  const W=wrap.clientWidth-20, H=wrap.clientHeight-4;
-  if (W<=0||H<=0) return;
-  if (p.rsiChart){p.rsiChart.destroy();p.rsiChart=null;}
-  const oldC=document.getElementById("utility-canvas-"+p.idx);
-  const canvas=document.createElement("canvas");
-  canvas.id="utility-canvas-"+p.idx; canvas.width=W; canvas.height=H;
-  oldC.replaceWith(canvas);
+  if (!wrap) return;
   const lastM=macdLine.filter(v=>v!=null).pop();
   const lastH=hist.filter(v=>v!=null).pop();
   const valEl=document.getElementById("utility-value-"+p.idx);
   const zoneEl=document.getElementById("utility-zone-"+p.idx);
   if (valEl&&lastM!=null) valEl.textContent=lastM.toFixed(4);
   if (zoneEl&&lastH!=null){zoneEl.textContent=lastH>=0?"BULL":"BEAR";zoneEl.style.color=lastH>=0?"var(--green)":"var(--red)";}
+  const macdXMax=candles.length-0.7+(indicators.arima?N_FC:0);
+  // Reuse existing chart — update data in-place instead of recreating every tick
+  if (p.rsiChart&&document.contains(p.rsiChart.canvas)){
+    p.rsiChart._hist=hist;
+    p.rsiChart.data.datasets[0].data=macdLine.map((v,i)=>({x:i,y:v}));
+    p.rsiChart.data.datasets[1].data=signal.map((v,i)=>({x:i,y:v}));
+    p.rsiChart.options.scales.x.max=macdXMax;
+    p.rsiChart.update("none");
+    return;
+  }
+  const W=wrap.clientWidth-20, H=wrap.clientHeight-4;
+  if (W<=0||H<=0) return;
+  if (p.rsiChart){p.rsiChart.destroy();p.rsiChart=null;}
+  const oldC=document.getElementById("utility-canvas-"+p.idx);
+  if (!oldC) return;
+  const canvas=document.createElement("canvas");
+  canvas.id="utility-canvas-"+p.idx; canvas.width=W; canvas.height=H;
+  oldC.replaceWith(canvas);
   const histPlugin={
     id:"macdHist-"+p.idx,
     beforeDatasetsDraw(chart){
+      const h=chart._hist||[];
       const {ctx,scales:{x,y}}=chart;
-      hist.forEach((h,i)=>{
-        if (h==null) return;
+      h.forEach((hv,i)=>{
+        if (hv==null) return;
         const xPos=x.getPixelForValue(i);
         const barW=Math.max(1,(x.getPixelForValue(1)-x.getPixelForValue(0))*0.6);
-        const zero=y.getPixelForValue(0),top=y.getPixelForValue(h);
+        const zero=y.getPixelForValue(0),top=y.getPixelForValue(hv);
         const bTop=Math.min(zero,top),bH=Math.abs(zero-top);
         if (bH<1) return;
-        ctx.fillStyle=h>=0?"#00d47e44":"#f03e3e44";
-        ctx.strokeStyle=h>=0?"#00d47e88":"#f03e3e88";
+        ctx.fillStyle=hv>=0?"#00d47e44":"#f03e3e44";
+        ctx.strokeStyle=hv>=0?"#00d47e88":"#f03e3e88";
         ctx.lineWidth=0.5;
         ctx.fillRect(xPos-barW/2,bTop,barW,bH);
         ctx.strokeRect(xPos-barW/2,bTop,barW,bH);
@@ -1676,13 +1700,14 @@ function drawMACD(p, candles) {
         titleFont:{family:"'JetBrains Mono'"},bodyFont:{family:"'JetBrains Mono'",size:11}
       }},
       scales:{
-        x:{type:"linear",min:-0.3,max:candles.length-0.7+(indicators.arima?N_FC:0),grid:{color:"#1e253011"},ticks:{display:false}},
+        x:{type:"linear",min:-0.3,max:macdXMax,grid:{color:"#1e253011"},ticks:{display:false}},
         y:{position:"right",grid:{color:"#1e253011"},
            ticks:{color:"#3d5066",font:{family:"'JetBrains Mono'",size:8},callback:(v)=>v===0?"0":v.toFixed(2)}}
       }
     },
     plugins:[histPlugin]
   });
+  p.rsiChart._hist=hist;
 }
 
 // ── INDICATORS UI ─────────────────────────────────────────────────────────────
