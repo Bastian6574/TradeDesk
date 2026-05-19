@@ -120,6 +120,22 @@
   .utility-select { background:var(--bg3); border:1px solid var(--border); color:var(--text2); font-family:var(--font); font-size:9px; letter-spacing:0; padding:1px 4px; cursor:pointer; outline:none; }
   .utility-select:focus { border-color:var(--blue); }
   .utility-canvas-wrap { flex:1; position:relative; padding:3px 10px 2px; overflow:hidden; }
+  .pine-section-lbl { font-size:8px; letter-spacing:2px; color:var(--text3); text-transform:uppercase; padding:6px 2px 3px; border-top:1px solid var(--border); margin-top:2px; }
+
+  /* ── PINE EDITOR MODAL ── */
+  #pine-modal { position:fixed; inset:0; background:rgba(0,0,0,0.75); display:flex; align-items:center; justify-content:center; z-index:120; }
+  #pine-modal.hidden { display:none; }
+  .pine-box { background:var(--bg2); border:1px solid var(--border2); width:520px; display:flex; flex-direction:column; }
+  .pine-head { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; border-bottom:1px solid var(--border); font-size:10px; color:var(--text2); letter-spacing:2px; }
+  .pine-head button { background:none; border:none; color:var(--text3); cursor:pointer; font-size:18px; line-height:1; transition:color 0.15s; font-family:var(--font); }
+  .pine-head button:hover { color:var(--red); }
+  #pine-editor-ta { background:var(--bg3); border:none; border-bottom:1px solid var(--border); color:var(--green); font-family:var(--font); font-size:11px; padding:12px 14px; resize:none; outline:none; min-height:220px; line-height:1.7; width:100%; box-sizing:border-box; }
+  .pine-foot { display:flex; align-items:center; gap:8px; padding:8px 14px; }
+  .pine-foot-btn { padding:3px 10px; background:transparent; border:1px solid var(--border); color:var(--text2); cursor:pointer; font-family:var(--font); font-size:10px; letter-spacing:1px; transition:all 0.15s; }
+  .pine-foot-btn:hover { border-color:var(--green); color:var(--green); }
+  .pine-foot-btn.run { border-color:var(--green2); color:var(--green); }
+  .pine-foot-btn.run:hover { background:var(--green2); color:#000; }
+  #pine-err { flex:1; font-size:9px; color:var(--red); letter-spacing:0; }
 
   /* ── CHART FOOTER ── */
   .chart-footer { background:var(--bg2); border-top:1px solid var(--border); display:flex; align-items:center; padding:0 8px; height:28px; gap:4px; flex-shrink:0; }
@@ -200,6 +216,34 @@
   .btn.confirm { border-color:var(--green2); color:var(--green); }
   .btn.confirm:hover { background:var(--green2); color:#000; }
 
+  /* Settings */
+  #settings-btn { background:none; border:1px solid var(--border); color:var(--text3); cursor:pointer; font-family:var(--font); font-size:14px; padding:2px 8px; line-height:1; transition:all 0.15s; }
+  #settings-btn:hover { border-color:var(--border2); color:var(--text2); }
+  #settings-popup { position:fixed; inset:0; background:rgba(0,0,0,0.72); display:flex; align-items:center; justify-content:center; z-index:110; }
+  #settings-popup.hidden { display:none; }
+  .sett-box { background:var(--bg2); border:1px solid var(--border2); width:340px; display:flex; flex-direction:column; }
+  .sett-head { display:flex; align-items:center; padding:11px 14px 9px; border-bottom:1px solid var(--border); }
+  .sett-title { color:var(--text2); font-size:10px; letter-spacing:2px; text-transform:uppercase; flex:1; }
+  .sett-saved { font-size:9px; color:var(--green); letter-spacing:1px; opacity:0; transition:opacity 0.4s; margin-right:10px; }
+  .sett-saved.show { opacity:1; }
+  .sett-close { background:none; border:none; color:var(--text3); cursor:pointer; font-size:18px; line-height:1; font-family:var(--font); padding:0; transition:color 0.15s; }
+  .sett-close:hover { color:var(--red); }
+  .sett-tabs { display:flex; border-bottom:1px solid var(--border); }
+  .sett-tab { flex:1; padding:7px 0; background:none; border:none; border-bottom:2px solid transparent; color:var(--text3); cursor:pointer; font-family:var(--font); font-size:10px; letter-spacing:1px; transition:all 0.15s; }
+  .sett-tab:hover { color:var(--text2); }
+  .sett-tab.active { color:var(--green); border-bottom-color:var(--green); }
+  .sett-body { padding:14px 16px 18px; overflow-y:auto; }
+  .sett-body.hidden { display:none; }
+  .sett-section { font-size:9px; letter-spacing:2px; color:var(--text3); text-transform:uppercase; margin-bottom:8px; margin-top:14px; }
+  .sett-section:first-child { margin-top:0; }
+  .sett-presets { display:flex; gap:4px; flex-wrap:wrap; }
+  .sett-preset { padding:3px 9px; background:var(--bg3); border:1px solid var(--border); color:var(--text3); cursor:pointer; font-family:var(--font); font-size:10px; letter-spacing:1px; transition:all 0.15s; }
+  .sett-preset:hover { border-color:var(--border2); color:var(--text2); }
+  .sett-preset.active { border-color:var(--green); color:var(--green); }
+  .sett-row { display:flex; align-items:center; gap:10px; }
+  .sett-slider { flex:1; accent-color:var(--green); cursor:pointer; height:4px; }
+  .sett-val { color:var(--text2); font-size:10px; min-width:38px; text-align:right; letter-spacing:1px; }
+
   /* Modal */
   #modal { position:fixed; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:100; }
   #modal.hidden { display:none; }
@@ -222,6 +266,7 @@
   </div>
   <div class="sep"></div>
   <div class="topbar-right">
+    <button id="settings-btn" onclick="openSettings()" title="Settings">⚙</button>
     <input id="ticker-search" placeholder="SYMBOL ↵" onkeydown="searchTicker(event)" spellcheck="false">
     <div id="clock">--:--:--</div>
   </div>
@@ -313,15 +358,97 @@
         <div id="indicators-content">
           <div id="indicators-inner">
             <label class="ind-row"><input type="checkbox" class="ind-cb" id="ind-arima"  onchange="setIndicator('arima', this.checked)"><span>ARIMA FORECAST</span><span class="ind-reload" id="arima-reload" onclick="reloadArima(event)" title="Re-run ARIMA">↻</span></label>
-            <label class="ind-row"><input type="checkbox" class="ind-cb" id="ind-ma20"   onchange="setIndicator('ma20',  this.checked)"><span>MA 20</span></label>
-            <label class="ind-row"><input type="checkbox" class="ind-cb" id="ind-ma50"   onchange="setIndicator('ma50',  this.checked)"><span>MA 50</span></label>
             <label class="ind-row"><input type="checkbox" class="ind-cb" id="ind-volume" onchange="setIndicator('volume',this.checked)"><span>VOLUME</span></label>
+            <div class="pine-section-lbl">PINE · OVERLAY</div>
+            <label class="ind-row"><input type="checkbox" class="ind-cb" id="pine-cb-bb"         onchange="togglePineIndicator('bb',this.checked)"><span>BOLLINGER BANDS</span></label>
+            <label class="ind-row"><input type="checkbox" class="ind-cb" id="pine-cb-ema_cross"  onchange="togglePineIndicator('ema_cross',this.checked)"><span>EMA 9/21</span></label>
+            <div class="pine-section-lbl">PINE · OSCILLATOR</div>
+            <label class="ind-row"><input type="checkbox" class="ind-cb" id="pine-cb-stoch_rsi"  onchange="togglePineIndicator('stoch_rsi',this.checked)"><span>STOCH RSI</span></label>
+            <label class="ind-row"><input type="checkbox" class="ind-cb" id="pine-cb-cci"        onchange="togglePineIndicator('cci',this.checked)"><span>CCI</span></label>
+            <label class="ind-row"><input type="checkbox" class="ind-cb" id="pine-cb-williams_r" onchange="togglePineIndicator('williams_r',this.checked)"><span>WILL %R</span></label>
+            <label class="ind-row"><input type="checkbox" class="ind-cb" id="pine-cb-atr"        onchange="togglePineIndicator('atr',this.checked)"><span>ATR</span></label>
+            <label class="ind-row"><input type="checkbox" class="ind-cb" id="pine-cb-custom"     onchange="togglePineIndicator('custom',this.checked)"><span>CUSTOM</span><span class="ind-reload" onclick="openPineEditor(event)" title="Edit script">✎</span></label>
+            <div id="pine-file-section" style="display:none">
+              <div class="pine-section-lbl">PINE · FILES</div>
+              <div id="pine-file-rows"></div>
+            </div>
           </div>
         </div>
       </div><!-- end right-panel-scroll -->
     </div><!-- end right-panel -->
   </div><!-- end center-right -->
 </div><!-- end main -->
+
+<!-- PINE EDITOR MODAL -->
+<div id="pine-modal" class="hidden">
+  <div class="pine-box">
+    <div class="pine-head">
+      <span>PINE SCRIPT EDITOR</span>
+      <button onclick="closePineEditor()">×</button>
+    </div>
+    <textarea id="pine-editor-ta" spellcheck="false" placeholder="//@version=5&#10;indicator(&quot;My Script&quot;, overlay=false)&#10;plot(ta.rsi(close, 14), &quot;RSI&quot;, color.blue)"></textarea>
+    <div class="pine-foot">
+      <span id="pine-err"></span>
+      <span id="pine-type-badge" style="font-size:9px;letter-spacing:1px;color:var(--text3);"></span>
+      <button class="pine-foot-btn run" onclick="runCustomPine()">▶ RUN</button>
+      <button class="pine-foot-btn" onclick="closePineEditor()">CLOSE</button>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS POPUP -->
+<div id="settings-popup" class="hidden">
+  <div class="sett-box">
+    <div class="sett-head">
+      <span class="sett-title">⚙ SETTINGS</span>
+      <span class="sett-saved" id="sett-saved">SAVED</span>
+      <button class="sett-close" onclick="closeSettings()">×</button>
+    </div>
+    <div class="sett-tabs">
+      <button class="sett-tab active" id="stab-chart" onclick="switchStab('chart')">CHART</button>
+      <button class="sett-tab" id="stab-indicators" onclick="switchStab('indicators')">INDICATORS</button>
+    </div>
+    <!-- CHART TAB -->
+    <div class="sett-body" id="stab-body-chart">
+      <div class="sett-section">UPDATE INTERVAL</div>
+      <div class="sett-presets" id="sett-interval-presets">
+        <button class="sett-preset" data-ms="100"   onclick="setUpdateInterval(100)">100ms</button>
+        <button class="sett-preset" data-ms="250"   onclick="setUpdateInterval(250)">250ms</button>
+        <button class="sett-preset" data-ms="500"   onclick="setUpdateInterval(500)">500ms</button>
+        <button class="sett-preset" data-ms="1000"  onclick="setUpdateInterval(1000)">1s</button>
+        <button class="sett-preset" data-ms="2000"  onclick="setUpdateInterval(2000)">2s</button>
+        <button class="sett-preset" data-ms="5000"  onclick="setUpdateInterval(5000)">5s</button>
+      </div>
+      <div class="sett-section">DEFAULT ZOOM</div>
+      <div class="sett-row">
+        <input type="range" class="sett-slider" id="sett-zoom-slider" min="10" max="500" value="150" oninput="onZoomSlider(this.value)">
+        <span class="sett-val" id="sett-zoom-val">150</span>
+      </div>
+      <div class="sett-section">DEFAULT TIMEFRAME</div>
+      <div class="sett-presets" id="sett-tf-presets">
+        <button class="sett-preset" data-tf="1m"  onclick="setDefaultTF('1m')">1m</button>
+        <button class="sett-preset" data-tf="5m"  onclick="setDefaultTF('5m')">5m</button>
+        <button class="sett-preset" data-tf="15m" onclick="setDefaultTF('15m')">15m</button>
+        <button class="sett-preset" data-tf="30m" onclick="setDefaultTF('30m')">30m</button>
+        <button class="sett-preset" data-tf="1h"  onclick="setDefaultTF('1h')">1h</button>
+        <button class="sett-preset" data-tf="1d"  onclick="setDefaultTF('1d')">D</button>
+      </div>
+    </div>
+    <!-- INDICATORS TAB -->
+    <div class="sett-body hidden" id="stab-body-indicators">
+      <div class="sett-section">RSI PERIOD</div>
+      <div class="sett-row">
+        <input type="range" class="sett-slider" id="sett-rsi-slider" min="2" max="50" value="14" oninput="onRSISlider(this.value)">
+        <span class="sett-val" id="sett-rsi-val">14</span>
+      </div>
+      <div class="sett-section">UTILITY PANEL HEIGHT</div>
+      <div class="sett-row">
+        <input type="range" class="sett-slider" id="sett-height-slider" min="60" max="200" value="90" oninput="onHeightSlider(this.value)">
+        <span class="sett-val" id="sett-height-val">90px</span>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- NEWS TOOLTIP -->
 <div id="news-tooltip"></div>
@@ -356,7 +483,7 @@ let refreshTimer = null;
 let _newsHeadlines = [];
 
 const indicators = (() => {
-  const d = { arima:true, ma20:true, ma50:true, volume:true };
+  const d = { arima:true, volume:true };
   try { return {...d, ...JSON.parse(localStorage.getItem("td_indicators")||"{}")}; }
   catch { return {...d}; }
 })();
@@ -429,12 +556,13 @@ function calcMACD(candles) {
 
 // ── PANEL FACTORY ─────────────────────────────────────────────────────────────
 function mkPanel(idx) {
-  return { idx, ticker:"BTC", tf:"30m", chartZoom:150, rsiPeriod:14, utilityMode:"rsi",
+  return { idx, ticker:"BTC", tf:state.default_tf||"30m", chartZoom:state.chart_zoom||150, rsiPeriod:state.rsi_period||14, utilityMode:"rsi",
            mainChart:null, rsiChart:null, candleData:null,
            forecastData:[], forecastOffset:0,
            liveWS:null, liveInterval:null, tickerInterval:null,
            liveCandles:[], el:null, _gen:0,
-           _offline:false, _offlineTimer:null };
+           _offline:false, _offlineTimer:null,
+           _pineOverlayCache:{}, _liveCount:0 };
 }
 
 // ── PANEL DOM ─────────────────────────────────────────────────────────────────
@@ -452,8 +580,6 @@ function buildPanelEl(p) {
         <span id="status-text-${i}" style="font-size:10px;letter-spacing:1px;"></span>
       </div>
       <div class="legend">
-        <div class="legend-item"><div class="legend-dot" style="background:var(--ma20)"></div>MA20</div>
-        <div class="legend-item"><div class="legend-dot" style="background:var(--ma50)"></div>MA50</div>
         <div class="legend-item" id="avg-legend-${i}" style="display:none">
           <div class="legend-dot" style="background:var(--avg)"></div>
           <span id="avg-legend-val-${i}">AVG —</span>
@@ -470,14 +596,15 @@ function buildPanelEl(p) {
       <canvas id="main-canvas-${i}"></canvas>
       <div class="loading hidden" id="loading-${i}"><span class="spinner"></span>LOADING</div>
     </div>
-    <div class="utility-panel" id="utility-panel-${i}" style="height:90px;">
+    <div class="utility-panel" id="utility-panel-${i}" style="height:${state.utility_height||90}px;">
       <div class="utility-header">
         <select class="utility-select" id="utility-select-${i}" onchange="setUtilityMode(${i},this.value)">
-          <option value="rsi">RSI 14</option>
+          <option value="rsi">RSI</option>
           <option value="macd">MACD</option>
         </select>
         <span id="utility-value-${i}" style="color:var(--blue);">—</span>
         <span id="utility-zone-${i}" style="font-size:9px;"></span>
+        <span id="utility-pine-lbl-${i}" style="display:none;font-size:9px;color:var(--text3);letter-spacing:1px;"></span>
         <span style="margin-left:auto;font-size:9px;color:var(--text3);">UTILITY</span>
       </div>
       <div class="utility-canvas-wrap" id="utility-canvas-wrap-${i}">
@@ -516,6 +643,7 @@ function initPanelEvents(p) {
     document.getElementById("zoom-indicator-"+p.idx).textContent="ZOOM "+p.chartZoom;
     if (p.tf==="1s") {
       if (p.liveCandles.length) drawLiveChart(p, p.liveCandles[p.liveCandles.length-1].c);
+      if (PINE_SCRIPTS.some(s=>s.overlay&&pineActive[s.id])) applyActivePineOverlays(p);
       drawUtility(p, p.liveCandles.slice(-p.chartZoom));
     } else if (p.candleData) {
       drawMainChart(p, p.candleData);
@@ -587,7 +715,7 @@ function getMonitorPreset(n) {
   const saved=state.monitors?.[String(n)];
   if (saved&&typeof saved==="object"&&saved.layout) return saved;
   const ticker=typeof saved==="string"?saved:"BTC";
-  return {layout:"1",charts:[{ticker,tf:"30m",utilityMode:"rsi"}]};
+  return {layout:"1",charts:[{ticker,tf:state.default_tf||"30m",utilityMode:"rsi"}]};
 }
 function restorePreset(preset) {
   currentLayout=preset.layout||"1";
@@ -595,7 +723,7 @@ function restorePreset(preset) {
   panels=Array.from({length:n},(_,i)=>{
     const p=mkPanel(i);
     const cfg=preset.charts?.[i];
-    if (cfg){p.ticker=cfg.ticker||"BTC";p.tf=cfg.tf||"30m";p.utilityMode=cfg.utilityMode||"rsi";}
+    if (cfg){p.ticker=cfg.ticker||"BTC";p.tf=cfg.tf||state.default_tf||"30m";p.utilityMode=cfg.utilityMode||"rsi";}
     return p;
   });
   renderChartContainer();
@@ -614,6 +742,7 @@ function saveMonitorPreset() {
 // ── LOAD TICKER ───────────────────────────────────────────────────────────────
 function loadTicker(ticker) {
   const p=panels[activeIdx]; if (!p) return;
+  p._pineOverlayCache={};
   stopPanel(p);
   p.ticker=ticker;
   document.querySelectorAll(".watch-item").forEach(el=>el.classList.toggle("active",el.id==="wi-"+ticker));
@@ -625,6 +754,7 @@ function loadTicker(ticker) {
 // ── TIMEFRAME ─────────────────────────────────────────────────────────────────
 function setPanelTF(idx, tf) {
   const p=panels[idx]; if (!p) return;
+  p._pineOverlayCache={};
   stopPanel(p); p.tf=tf; applyTFButtons(p); loadMainChart(p); saveMonitorPreset();
 }
 function applyTFButtons(p) {
@@ -643,6 +773,8 @@ function applyUtilitySelect(p) {
 function stopPanel(p) {
   p._gen++;
   p._offline=false;
+  p.candleData=null;
+  p._liveCount=0;
   if (p._offlineTimer){clearTimeout(p._offlineTimer);p._offlineTimer=null;}
   if (p.liveWS){p.liveWS.close();p.liveWS=null;}
   if (p.liveInterval){clearInterval(p.liveInterval);p.liveInterval=null;}
@@ -664,8 +796,8 @@ async function loadMainChart(p) {
     if (data.error){showLoading(p,false);return;}
     p.forecastData=[];p.forecastOffset=0;
     updateHeader(p,data);
-    drawMainChart(p,data);
     p.candleData=data;
+    drawMainChart(p,data);
     drawUtility(p,data._liveCandles);
     startTickerPoll(p);
     const ai=document.getElementById("avg-input-"+p.idx);
@@ -728,19 +860,57 @@ async function startStockPoll(p) {
   },1000);
 }
 
-// ── TICKER POLL (non-1s TF) ───────────────────────────────────────────────────
-function startTickerPoll(p) {
-  if (p.tickerInterval){clearInterval(p.tickerInterval);p.tickerInterval=null;}
-  const myGen=p._gen;
-  p.tickerInterval=setInterval(async()=>{
-    if (p._gen!==myGen||!p.candleData||!p.mainChart) return;
+// ── SHARED PRICE FEED ─────────────────────────────────────────────────────────
+// One global interval — fetches each unique ticker once, distributes to all panels.
+// Prevents N-panel × fast-interval = Binance rate-limit hammering.
+let _priceFeed=null, _priceFeedMs=0;
+
+function startPriceFeed() {
+  if (_priceFeed && _priceFeedMs===updateIntervalMs) return;
+  if (_priceFeed) clearInterval(_priceFeed);
+  _priceFeedMs=updateIntervalMs;
+  _priceFeed=setInterval(_priceTick, updateIntervalMs);
+}
+
+async function _priceTick() {
+  // Build ticker → [panels] map (skip 1s and panels mid-reload)
+  const byTicker={};
+  panels.forEach(p=>{
+    if (p.tf==="1s"||!p.candleData||!p.mainChart) return;
+    if (!byTicker[p.ticker]) byTicker[p.ticker]=[];
+    byTicker[p.ticker].push(p);
+  });
+  for (const [ticker,ps] of Object.entries(byTicker)) {
     try {
-      const r=await fetch(API+`/api/chart/${p.ticker}?period=1d&interval=1m`);
-      const d=await r.json();
-      if (p._gen!==myGen||d.error||!d.candles.length) return;
-      updateLiveCandle(p,d.last,d.change_pct);
+      const binSym=toBinanceSymbol(ticker);
+      let price;
+      if (binSym) {
+        // Crypto: lightweight price-only endpoint, same source as 1s WS, no yfinance delay
+        const r=await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${binSym.toUpperCase()}`);
+        const d=await r.json();
+        if (!d.price) continue;
+        price=parseFloat(d.price);
+      } else {
+        // Stocks: yfinance (free data is delayed, nothing we can do)
+        const r=await fetch(API+`/api/chart/${ticker}?period=1d&interval=1m`);
+        const d=await r.json();
+        if (d.error||!d.candles.length) continue;
+        price=d.last;
+      }
+      ps.forEach(p=>{
+        if (!p.candleData||!p.mainChart) return; // re-check after await
+        // Compute change% from panel's own first candle so each TF shows its own range
+        const c0=p.candleData.candles?.[0]?.c;
+        const pct=c0&&c0>0?((price-c0)/c0)*100:0;
+        updateLiveCandle(p,price,pct);
+      });
     } catch(e){}
-  },updateIntervalMs);
+  }
+}
+
+// startTickerPoll: called by loadMainChart — just kicks the shared feed
+function startTickerPoll(p) {
+  startPriceFeed();
 }
 
 function updateLiveCandle(p, livePrice, changePct) {
@@ -750,13 +920,15 @@ function updateLiveCandle(p, livePrice, changePct) {
   const last=candles[candles.length-1], ivMs=tfIntervalMs(p.tf);
   if (ivMs>0&&Date.now()>=last.t+ivMs) {
     if (Date.now()-last.t>ivMs*5){setOffline(p);return;}
-    const newC={t:last.t+ivMs,o:livePrice,h:livePrice,l:livePrice,c:livePrice,v:0,ma20:null,ma50:null};
+    const newC={t:last.t+ivMs,o:livePrice,h:livePrice,l:livePrice,c:livePrice,v:0};
     candles.push(newC);
     if (candles.length>p.chartZoom) candles.shift();
     if (p.forecastData.length>0){p.forecastData.shift();}
     p.forecastOffset=candles.length;
     if (p.mainChart) p.mainChart.options.scales.x.max=candles.length-0.7+(indicators.arima?N_FC:0);
     if (indicators.arima) loadForecast(p,true);
+    // Recompute Pine overlays when candle window shifts
+    if (PINE_SCRIPTS.some(s=>s.overlay&&pineActive[s.id])) applyActivePineOverlays(p);
   }
   const cur=candles[candles.length-1];
   cur.c=livePrice; cur.h=Math.max(cur.h,livePrice); cur.l=Math.min(cur.l,livePrice);
@@ -772,8 +944,6 @@ function updateLiveCandle(p, livePrice, changePct) {
   if (p.mainChart){
     p.mainChart.options.scales.y.min=minP; p.mainChart.options.scales.y.max=maxP;
     p.mainChart.data.datasets[0].data=candles.map((c,i)=>({x:i,y:c.c}));
-    p.mainChart.data.datasets[1].data=candles.map((c,i)=>({x:i,y:c.ma20??null}));
-    p.mainChart.data.datasets[2].data=candles.map((c,i)=>({x:i,y:c.ma50??null}));
     p.mainChart.update("none");
     drawUtility(p,candles);
   }
@@ -781,8 +951,23 @@ function updateLiveCandle(p, livePrice, changePct) {
 
 // ── DRAW MAIN CHART ───────────────────────────────────────────────────────────
 function drawMainChart(p, data) {
-  const candles=data.candles.slice(-p.chartZoom);
-  data._liveCandles=candles;
+  // Preserve live candle state across redraws (zoom changes, resize, refresh).
+  // Only init fresh when _liveCandles doesn't exist yet (first load / TF change).
+  if (!data._liveCandles||!data._liveCandles.length) {
+    data._liveCandles=data.candles.slice(-p.chartZoom);
+  } else {
+    const cur=data._liveCandles;
+    if (cur.length<p.chartZoom) {
+      // Zoom out: prepend older historical candles
+      const firstT=cur[0].t;
+      const prefix=data.candles.filter(c=>c.t<firstT).slice(-(p.chartZoom-cur.length));
+      if (prefix.length) data._liveCandles=[...prefix,...cur];
+    } else if (cur.length>p.chartZoom) {
+      // Zoom in: trim oldest from front in-place
+      cur.splice(0,cur.length-p.chartZoom);
+    }
+  }
+  const candles=data._liveCandles;
   const avg=state.averages[p.ticker];
   const prices=candles.flatMap(c=>[c.h,c.l]); if (avg) prices.push(avg);
   if (indicators.arima&&p.forecastData.length) p.forecastData.forEach(f=>{prices.push(f.ci_lo,f.ci_hi);});
@@ -793,21 +978,25 @@ function drawMainChart(p, data) {
   p.mainChart=new Chart(canvas,{
     type:"scatter",
     data:{labels:candles.map((_,i)=>i),datasets:[
-      {data:candles.map((c,i)=>({x:i,y:c.c})),pointRadius:0,showLine:false},
-      {data:candles.map((c,i)=>({x:i,y:c.ma20})),borderColor:"#f0c040",borderWidth:1.5,pointRadius:0,showLine:true,tension:0.3,spanGaps:true,hidden:!indicators.ma20},
-      {data:candles.map((c,i)=>({x:i,y:c.ma50})),borderColor:"#a060f0",borderWidth:1.5,pointRadius:0,showLine:true,tension:0.3,spanGaps:true,hidden:!indicators.ma50}
+      {data:candles.map((c,i)=>({x:i,y:c.c})),pointRadius:0,showLine:false}
     ]},
     options:buildChartOptions(p,candles,minP,maxP,false),
     plugins:[...buildCandlePlugins(candles,avg,false),buildForecastPlugin(p),buildPriceLinePlugin(p,candles)]
   });
+  // Restore cached Pine overlays immediately so they survive the redraw (zoom-matched only)
+  PINE_SCRIPTS.filter(s=>s.overlay&&pineActive[s.id]).forEach(def=>{
+    const cached=p._pineOverlayCache[def.id];
+    if (cached&&cached.zoom===p.chartZoom) cached.sets.forEach(d=>p.mainChart.data.datasets.push(Object.assign({},d,{data:[...d.data]})));
+  });
+  if (p.mainChart.data.datasets.length>1) p.mainChart.update("none");
   if (indicators.arima) loadForecast(p);
+  applyActivePineOverlays(p); // recompute async, refreshes cache when candle count changes
 }
 
 function drawLiveChart(p, lastPrice) {
   const candles=p.liveCandles.slice(-p.chartZoom);
   if (!candles.length) return;
   const avg=state.averages[p.ticker];
-  const ma20=calcMA(candles,20),ma50=calcMA(candles,50);
   const prices=candles.flatMap(c=>[c.h,c.l]); if (avg) prices.push(avg);
   const minP=Math.min(...prices)*0.999, maxP=Math.max(...prices)*1.001;
   const canvas=makePanelCanvas(p);
@@ -816,13 +1005,21 @@ function drawLiveChart(p, lastPrice) {
   p.mainChart=new Chart(canvas,{
     type:"scatter",
     data:{labels:candles.map((_,i)=>i),datasets:[
-      {data:candles.map((c,i)=>({x:i,y:c.c})),pointRadius:0,showLine:false},
-      {data:ma20.map((v,i)=>({x:i,y:v})),borderColor:"#f0c040",borderWidth:1.5,pointRadius:0,showLine:true,tension:0.3,spanGaps:true,hidden:!indicators.ma20},
-      {data:ma50.map((v,i)=>({x:i,y:v})),borderColor:"#a060f0",borderWidth:1.5,pointRadius:0,showLine:true,tension:0.3,spanGaps:true,hidden:!indicators.ma50}
+      {data:candles.map((c,i)=>({x:i,y:c.c})),pointRadius:0,showLine:false}
     ]},
     options:buildChartOptions(p,candles,minP,maxP,true),
     plugins:[...buildCandlePlugins(candles,avg,true),buildPriceLinePlugin(p,candles)]
   });
+  // Reapply cached Pine overlay datasets instantly (skip if zoom changed — stale positions)
+  PINE_SCRIPTS.filter(s=>s.overlay&&pineActive[s.id]).forEach(def=>{
+    const cached=p._pineOverlayCache[def.id];
+    if (cached&&cached.zoom===p.chartZoom) cached.sets.forEach(d=>p.mainChart.data.datasets.push(Object.assign({},d,{data:[...d.data]})));
+  });
+  if (p.mainChart.data.datasets.length>1) p.mainChart.update("none");
+  // Recompute Pine overlays only when a new candle has closed
+  const lc=p.liveCandles.length;
+  if (lc!==(p._liveCount||0)) { p._liveCount=lc; applyActivePineOverlays(p); }
+  drawUtility(p,candles);
 }
 
 // ── CANVAS HELPER ─────────────────────────────────────────────────────────────
@@ -1019,8 +1216,347 @@ function setUtilityMode(idx, mode) {
 
 function drawUtility(p, candles) {
   if (!candles||!candles.length) return;
+  // Active Pine oscillator overrides RSI/MACD
+  const activePineOsc=PINE_SCRIPTS.find(s=>!s.overlay&&pineActive[s.id]);
+  if (activePineOsc) { drawPineOscillator(p,activePineOsc,candles); return; }
   if (p.utilityMode==="macd") drawMACD(p,candles);
   else drawRSI(p,candles);
+}
+
+// ── PINE SCRIPT INTEGRATION ───────────────────────────────────────────────────
+// ── PINE SCRIPT INTEGRATION ───────────────────────────────────────────────────
+// overlay:true  → lines drawn on main price chart
+// overlay:false → drawn in utility panel (replaces RSI/MACD when active)
+const PINE_SCRIPTS = [
+  { id:"bb",         name:"BOLLINGER BANDS", overlay:true, script:`//@version=5
+indicator("BB",overlay=true)
+length=20
+basis=ta.sma(close,length)
+dev=2.0*ta.stdev(close,length)
+plot(basis+dev,"Upper")
+plot(basis,"Basis")
+plot(basis-dev,"Lower")` },
+
+  { id:"ema_cross",  name:"EMA 9/21",        overlay:true, script:`//@version=5
+indicator("EMA Cross",overlay=true)
+plot(ta.ema(close,9),"EMA9")
+plot(ta.ema(close,21),"EMA21")` },
+
+  { id:"stoch_rsi",  name:"STOCH RSI",       overlay:false, script:`//@version=5
+indicator("Stoch RSI",overlay=false)
+rsi1=ta.rsi(close,14)
+k=ta.sma(ta.stoch(rsi1,rsi1,rsi1,14),3)
+d=ta.sma(k,3)
+plot(k,"K")
+plot(d,"D")` },
+
+  { id:"cci",        name:"CCI",             overlay:false, script:`//@version=5
+indicator("CCI",overlay=false)
+src=hlc3
+ma=ta.sma(src,20)
+sd=ta.stdev(src,20)
+plot(sd>0?(src-ma)/(0.015*sd):0,"CCI")` },
+
+  { id:"williams_r", name:"WILL %R",         overlay:false, script:`//@version=5
+indicator("Will %R",overlay=false)
+hh=ta.highest(high,14)
+ll=ta.lowest(low,14)
+plot(hh-ll>0?(hh-close)/(hh-ll)*-100:0,"%R")` },
+
+  { id:"atr",        name:"ATR",             overlay:false, script:`//@version=5
+indicator("ATR",overlay=false)
+plot(ta.atr(14),"ATR")` },
+
+  { id:"custom",     name:"CUSTOM",          overlay:false, script:null },
+];
+
+// Persist which Pine indicators are active
+const pineActive=(()=>{try{return JSON.parse(localStorage.getItem("td_pine_active")||"{}");}catch{return {};}})();
+function savePineActive(){localStorage.setItem("td_pine_active",JSON.stringify(pineActive));}
+
+// Global custom script (shared across panels)
+let _pineCustomScript=localStorage.getItem("td_pine_custom")||"";
+
+// Parse overlay=true/false from indicator() or v4 study() declaration
+function detectPineOverlay(script) {
+  // v5/v6 indicator()
+  const m=/indicator\s*\([^)]*\boverlay\s*=\s*(true|false)/i.exec(script);
+  if (m) return m[1].toLowerCase()==="true";
+  // v4 study() — named overlay= or 3rd positional arg
+  const sm=/\bstudy\s*\(([^)]*)\)/.exec(script);
+  if (sm) {
+    const inner=sm[1];
+    if (/\boverlay\s*=\s*true/i.test(inner)) return true;
+    if (/\boverlay\s*=\s*false/i.test(inner)) return false;
+    const args=inner.split(',').map(a=>a.trim());
+    if (args.length>=3) return args[2]==="true";
+    return false;
+  }
+  return false;
+}
+
+// Sync custom def's overlay flag from saved script on startup
+if (_pineCustomScript) {
+  const _customDef=PINE_SCRIPTS.find(s=>s.id==="custom");
+  if (_customDef) _customDef.overlay=detectPineOverlay(_pineCustomScript);
+}
+
+let _PineTSModule=null;
+async function loadPineTS() {
+  if (_PineTSModule) return _PineTSModule;
+  try {
+    const mod=await import("https://esm.sh/pinets");
+    _PineTSModule=mod.PineTS||mod.default?.PineTS||Object.values(mod).find(v=>typeof v==="function"&&v.name==="PineTS");
+    return _PineTSModule;
+  } catch(e){console.warn("PineTS load failed:",e);return null;}
+}
+
+// ── Toggle from INDICATORS panel ──────────────────────────────────────────────
+function togglePineIndicator(id, active) {
+  const def=PINE_SCRIPTS.find(s=>s.id===id); if(!def)return;
+  if (!def.overlay && active) {
+    // Only one oscillator at a time — deactivate others
+    PINE_SCRIPTS.filter(s=>!s.overlay&&s.id!==id&&pineActive[s.id]).forEach(s=>{
+      pineActive[s.id]=false;
+      const cb=document.getElementById("pine-cb-"+s.id); if(cb)cb.checked=false;
+      // Hide label in utility panels
+      panels.forEach(p=>{const l=document.getElementById("utility-pine-lbl-"+p.idx);if(l)l.style.display="none";});
+    });
+    if (id==="custom"&&!_pineCustomScript){openPineEditor();active=false;pineActive[id]=false;const cb=document.getElementById("pine-cb-custom");if(cb)cb.checked=false;savePineActive();return;}
+  }
+  pineActive[id]=active; savePineActive();
+  if (def.overlay) {
+    panels.forEach(p=>{
+      if (!p.mainChart||!p.candleData) return;
+      if (active) applyPineOverlayToPanel(p,def);
+      else { p.mainChart.data.datasets=p.mainChart.data.datasets.filter(d=>d._pineId!==id); p.mainChart.update("none"); }
+    });
+  } else {
+    // Show/hide label tag in utility header
+    panels.forEach(p=>{
+      const l=document.getElementById("utility-pine-lbl-"+p.idx); if(!l)return;
+      if (active){l.textContent=def.name;l.style.display="";}else l.style.display="none";
+    });
+    const candles2=panels.map(p=>({p,candles:p.tf==="1s"?p.liveCandles.slice(-p.chartZoom):p.candleData?._liveCandles}));
+    candles2.forEach(({p,candles})=>{if(candles)drawUtility(p,candles);});
+  }
+}
+
+// Overlay colors per script slot
+const _OVLY_COLORS={
+  bb:["#60a8f0","#3e8ef0","#60a8f0"],
+  ema_cross:["#f0a030","#f06080"],
+  custom:["#f0c040","#f09030"],
+  // File-based scripts — lowercase keys match via def.id.toLowerCase() fallback
+  file_bb_multitimeframe:["#ffffff","#ffffff","#f03e3e","#3e8ef0","#00d47e"],
+  file_candlestick_structure:["#089981","#089981","#f23645"],
+  file_curved_smartmoneyconcepts:["#f23645","#00d47e","#f03e3e","#f03e3e","#00d47e","#00d47e","#3e8ef0","#3e8ef0"],
+  file_dynamicflowribbon:["#1add7f","#1add7f","#1add7f","#1add7f","#1add7f","#e79314","#e79314","#e79314","#e79314","#e79314","#e79314"],
+  file_dynamicswinganchoredvwap:["#089981","#089981","#f23645"],
+  file_gannbox:["#F44336","#a5d6a7","#9598a1","#0097a7","#81C784","#a5d6a7","#F44336"],
+  file_gannsquare144:["#ef5350","#e0e0e0","#2196F3","#e0e0e0","#4CAF50","#FF9800","#FF9800"],
+  file_half_cup:["#089981","#f23645","#e0e0e0","#089981"],
+  file_heatmaptrailingstop:["#4CAF50","#4CAF50","#4CAF50","#4CAF50","#76FF03","#f23645","#76FF03","#f23645"],
+  file_highvolumepoints:["#fda05e","#2fd68e","#fda05e","#2fd68e"],
+  file_liquidity_swings:["#f23645","#26a69a","#f23645","#26a69a"],
+};
+
+async function applyPineOverlayToPanel(p, def) {
+  if (!p.mainChart) return;
+  const is1s=p.tf==="1s";
+  const visCandles=is1s ? p.liveCandles.slice(-p.chartZoom) : p.candleData?._liveCandles;
+  if (!visCandles||!visCandles.length) return;
+  // Compute over full available history so long-lookback indicators warm up properly
+  const allCandles=is1s ? p.liveCandles : (p.candleData?.candles||visCandles);
+  const computeLen=allCandles.length;
+  // Cache key includes last visible candle timestamp so non-1s overlays recompute when window shifts
+  const lastT=visCandles[visCandles.length-1]?.t||0;
+  const cacheKey=`${computeLen}:${lastT}`;
+  const cached=p._pineOverlayCache[def.id];
+  if (cached&&cached.key===cacheKey&&cached.zoom===p.chartZoom) {
+    p.mainChart.data.datasets=p.mainChart.data.datasets.filter(d=>d._pineId!==def.id);
+    cached.sets.forEach(d=>p.mainChart.data.datasets.push(Object.assign({},d,{data:[...d.data]})));
+    p.mainChart.update("none");
+    return;
+  }
+  const gen=p._gen;
+  const PineTS=await loadPineTS();
+  if (!PineTS||p._gen!==gen||!p.mainChart) return;
+  try {
+    const pineCandles=allCandles.map(c=>({open:c.o,high:c.h,low:c.l,close:c.c,volume:c.v||0,openTime:c.t}));
+    const {plots}=await new PineTS(pineCandles).run(def.script);
+    if (p._gen!==gen||!p.mainChart) return;
+    p.mainChart.data.datasets=p.mainChart.data.datasets.filter(d=>d._pineId!==def.id);
+    const palette=_OVLY_COLORS[def.id]||_OVLY_COLORS[def.id.toLowerCase()]||["#f0c040","#f09030","#f0c040"];
+    const visible=visCandles.length;
+    const newSets=[];
+    Object.entries(plots).filter(([,pl])=>pl?.data?.length).forEach(([name,pl],i)=>{
+      const pineColor=pl.data.slice().reverse().find(pt=>pt?.options?.color)?.options?.color;
+      const seriesColor=pineColor||palette[i%palette.length];
+      // Slice to visible window — last `visible` bars of the full computation
+      const visData=pl.data.slice(-visible);
+      const nullFrac=visData.filter(pt=>pt==null||pt.value==null).length/Math.max(visData.length,1);
+      const isSparse=nullFrac>0.8; // treat as scatter/signal dots when mostly null
+      const ds={_pineId:def.id, label:name,
+        data:visData.map((pt,j)=>({x:j,y:pt?.value??null})),
+        borderColor:seriesColor, borderWidth:isSparse?0:1.5,
+        pointRadius:isSparse?4:0, pointBackgroundColor:seriesColor,
+        tension:0.2, showLine:!isSparse, spanGaps:false,
+        borderDash:i>0&&def.id==="bb"?[3,3]:[]};
+      newSets.push(ds);
+      p.mainChart.data.datasets.push(ds);
+    });
+    p._pineOverlayCache[def.id]={key:cacheKey, zoom:p.chartZoom, sets:newSets.map(d=>Object.assign({},d,{data:[...d.data]}))};
+    p.mainChart.update("none");
+  } catch(e){console.warn("Pine overlay",def.id,":",e.message||e);}
+}
+
+async function applyActivePineOverlays(p) {
+  const active=PINE_SCRIPTS.filter(s=>s.overlay&&pineActive[s.id]);
+  for (const def of active) await applyPineOverlayToPanel(p,def);
+}
+
+async function loadPineFileScripts() {
+  try {
+    const r=await fetch(API+"/api/pine/scripts");
+    const scripts=await r.json();
+    if (!Array.isArray(scripts)||!scripts.length) return;
+    const section=document.getElementById("pine-file-section");
+    const rows=document.getElementById("pine-file-rows");
+    if (!section||!rows) return;
+    section.style.display="";
+    rows.innerHTML="";
+    scripts.forEach(s=>{
+      s.overlay=detectPineOverlay(s.script);
+      const existing=PINE_SCRIPTS.findIndex(p=>p.id===s.id);
+      if (existing>=0) PINE_SCRIPTS[existing]=s; else PINE_SCRIPTS.push(s);
+      const label=document.createElement("label");
+      label.className="ind-row";
+      const typeTag=s.overlay
+        ?`<span style="font-size:8px;color:var(--blue);margin-left:auto;">OVR</span>`
+        :`<span style="font-size:8px;color:var(--amber);margin-left:auto;">OSC</span>`;
+      label.innerHTML=`<input type="checkbox" class="ind-cb" id="pine-cb-${s.id}" onchange="togglePineIndicator('${s.id}',this.checked)"><span>${s.name}</span>${typeTag}`;
+      rows.appendChild(label);
+      const cb=document.getElementById("pine-cb-"+s.id);
+      if (cb) cb.checked=!!pineActive[s.id];
+    });
+  } catch(e){console.warn("Pine file scripts:",e);}
+}
+
+// ── Oscillator in utility panel ────────────────────────────────────────────────
+async function drawPineOscillator(p, def, candles) {
+  if (!candles||candles.length<10) return;
+  const gen=p._gen;
+  let src=def.id==="custom"?_pineCustomScript:def.script;
+  if (!src) return;
+  const PineTS=await loadPineTS();
+  if (!PineTS||p._gen!==gen) return;
+  try {
+    const pineCandles=candles.map(c=>({open:c.o,high:c.h,low:c.l,close:c.c,volume:c.v||0,openTime:c.t}));
+    const {plots}=await new PineTS(pineCandles).run(src);
+    if (p._gen!==gen) return;
+    renderPineOscillator(p,plots,candles);
+  } catch(e){
+    if (p._gen!==gen) return;
+    const v=document.getElementById("utility-value-"+p.idx); if(v)v.textContent="ERR";
+    console.warn("Pine OSC:",e.message||e);
+  }
+}
+
+function renderPineOscillator(p, plots, candles) {
+  const wrap=document.getElementById("utility-canvas-wrap-"+p.idx); if(!wrap)return;
+  const W=wrap.clientWidth-20, H=wrap.clientHeight-4;
+  if (W<=0||H<=0) return;
+  if (p.rsiChart){p.rsiChart.destroy();p.rsiChart=null;}
+  const oldC=document.getElementById("utility-canvas-"+p.idx);
+  const canvas=document.createElement("canvas"); canvas.id="utility-canvas-"+p.idx; canvas.width=W; canvas.height=H;
+  oldC.replaceWith(canvas);
+  // Filter to only numeric line plots (exclude hline/fill artifacts)
+  const entries=Object.entries(plots).filter(([,pl])=>{
+    if (!pl?.data?.length) return false;
+    const vals=pl.data.map(d=>d.value).filter(v=>v!=null&&isFinite(v)&&!Number.isNaN(v));
+    if (vals.length<2) return false;
+    // Skip constant series (likely hline renders)
+    const range=Math.max(...vals)-Math.min(...vals);
+    return range>0;
+  });
+  if (!entries.length) return;
+  const COLORS=["#3e8ef0","#f03e3e","#00d47e","#f0a03e","#a060f0"];
+  const xMax=candles.length-0.7+(indicators.arima?N_FC:0);
+  const datasets=entries.map(([name,pl],i)=>{
+    const pineColor=pl.data.slice().reverse().find(pt=>pt?.options?.color)?.options?.color;
+    return {
+      label:name, data:pl.data.map((pt,j)=>({x:j,y:pt.value??null})),
+      borderColor:pineColor||COLORS[i%COLORS.length], borderWidth:1.5,
+      pointRadius:0, tension:0.2, fill:false, showLine:true, spanGaps:false
+    };
+  });
+  const yVals=datasets.flatMap(ds=>ds.data.map(d=>d.y).filter(v=>v!=null&&isFinite(v)));
+  const rawMin=yVals.length?Math.min(...yVals):0, rawMax=yVals.length?Math.max(...yVals):100;
+  const pad=(rawMax-rawMin)*0.08||1;
+  const lastPt=entries[0][1].data.slice(-1)[0];
+  const valEl=document.getElementById("utility-value-"+p.idx);
+  if (valEl&&lastPt?.value!=null) valEl.textContent=lastPt.value.toFixed(2);
+  p.rsiChart=new Chart(canvas,{
+    type:"scatter", data:{datasets},
+    options:{
+      animation:false, responsive:false,
+      plugins:{legend:{display:entries.length>1},tooltip:{enabled:false}},
+      scales:{
+        x:{type:"linear",min:-0.3,max:xMax,grid:{color:"#1e253011"},ticks:{display:false}},
+        y:{min:rawMin-pad,max:rawMax+pad,position:"right",grid:{color:"#1e253011"},
+           ticks:{color:"#3d5066",font:{family:"'JetBrains Mono'",size:8},maxTicksLimit:3}}
+      }
+    }
+  });
+}
+
+// ── Pine editor (custom scripts) ──────────────────────────────────────────────
+function _updatePineTypeBadge() {
+  const ta=document.getElementById("pine-editor-ta");
+  const badge=document.getElementById("pine-type-badge");
+  if (!ta||!badge||!ta.value.trim()){if(badge)badge.textContent="";return;}
+  const isOverlay=detectPineOverlay(ta.value);
+  badge.textContent=isOverlay?"▸ CHART OVERLAY":"▸ UTILITY OSCILLATOR";
+  badge.style.color=isOverlay?"var(--blue)":"var(--amber)";
+}
+function openPineEditor(e) {
+  if (e&&e.stopPropagation) e.stopPropagation();
+  const ta=document.getElementById("pine-editor-ta");
+  if (ta&&_pineCustomScript) ta.value=_pineCustomScript;
+  document.getElementById("pine-err").textContent="";
+  _updatePineTypeBadge();
+  if (ta&&!ta._pineBadgeWired){ta._pineBadgeWired=true;ta.addEventListener("input",_updatePineTypeBadge);}
+  document.getElementById("pine-modal").classList.remove("hidden");
+  setTimeout(()=>ta&&ta.focus(),50);
+}
+function closePineEditor(){document.getElementById("pine-modal").classList.add("hidden");}
+function runCustomPine() {
+  const ta=document.getElementById("pine-editor-ta");
+  if (!ta||!ta.value.trim()){document.getElementById("pine-err").textContent="Empty script.";return;}
+  _pineCustomScript=ta.value;
+  localStorage.setItem("td_pine_custom",_pineCustomScript);
+  const isOverlay=detectPineOverlay(_pineCustomScript);
+  const customDef=PINE_SCRIPTS.find(s=>s.id==="custom");
+  customDef.overlay=isOverlay;
+  pineActive["custom"]=true; savePineActive();
+  const cb=document.getElementById("pine-cb-custom"); if(cb)cb.checked=true;
+  closePineEditor();
+  if (isOverlay) {
+    panels.forEach(p=>{if(p.mainChart&&(p.candleData||p.tf==="1s"))applyPineOverlayToPanel(p,customDef);});
+  } else {
+    // Deactivate other oscillators
+    PINE_SCRIPTS.filter(s=>!s.overlay&&s.id!=="custom"&&pineActive[s.id]).forEach(s=>{
+      pineActive[s.id]=false;
+      const scb=document.getElementById("pine-cb-"+s.id); if(scb)scb.checked=false;
+    });
+    panels.forEach(p=>{
+      const l=document.getElementById("utility-pine-lbl-"+p.idx);
+      if(l){l.textContent="CUSTOM";l.style.display="";}
+      const candles=p.tf==="1s"?p.liveCandles.slice(-p.chartZoom):p.candleData?._liveCandles;
+      if(candles)drawUtility(p,candles);
+    });
+  }
 }
 
 function drawRSI(p, candles) {
@@ -1161,15 +1697,26 @@ function applyIndicatorToPanel(p, key, val) {
       if(val){if(p.mainChart){p.mainChart.options.scales.x.max=len-0.7+N_FC;p.mainChart.update("none");}loadForecast(p);}
       else{p.forecastData=[];p.forecastOffset=0;if(p.mainChart){p.mainChart.options.scales.x.max=len-0.7;p.mainChart.update("none");}}
       break;}
-    case"ma20": if(p.mainChart?.data.datasets[1]){p.mainChart.data.datasets[1].hidden=!val;p.mainChart.update("none");}break;
-    case"ma50": if(p.mainChart?.data.datasets[2]){p.mainChart.data.datasets[2].hidden=!val;p.mainChart.update("none");}break;
     case"volume": if(p.mainChart)p.mainChart.update("none");break;
   }
 }
 function initIndicatorUI() {
-  ["arima","ma20","ma50","volume"].forEach(k=>{
+  ["arima","volume"].forEach(k=>{
     const el=document.getElementById("ind-"+k); if(el)el.checked=indicators[k];
   });
+  // Restore Pine checkbox states from localStorage
+  PINE_SCRIPTS.forEach(def=>{
+    const cb=document.getElementById("pine-cb-"+def.id);
+    if(cb) cb.checked=!!pineActive[def.id];
+  });
+  // Show active oscillator label in utility header once panels exist
+  const activePineOsc=PINE_SCRIPTS.find(s=>!s.overlay&&pineActive[s.id]);
+  if (activePineOsc) {
+    panels.forEach(p=>{
+      const l=document.getElementById("utility-pine-lbl-"+p.idx);
+      if(l){l.textContent=activePineOsc.name;l.style.display="";}
+    });
+  }
   const open=localStorage.getItem("td_ind_open")!=="0";
   if (!open)_setIndicatorsPanelOpen(false);
 }
@@ -1179,7 +1726,7 @@ function toggleIndicatorsPanel() {
   localStorage.setItem("td_ind_open",open?"0":"1");
 }
 function _setIndicatorsPanelOpen(open) {
-  document.getElementById("indicators-content").style.maxHeight=open?"300px":"0px";
+  document.getElementById("indicators-content").style.maxHeight=open?"800px":"0px";
   document.getElementById("ind-arrow").style.transform=open?"rotate(0deg)":"rotate(-90deg)";
 }
 async function reloadArima(e) {
@@ -1349,7 +1896,9 @@ function searchTicker(e){
 
 // ── STATE SYNC ────────────────────────────────────────────────────────────────
 async function loadState() {
-  const defaults={watchlist:["BTC","AAPL","NVDA","TSLA","MSFT","AMZN","META","GOOGL","SPY"],averages:{},monitors:{},active_monitor:1,update_interval:1000};
+  const defaults={watchlist:["BTC","AAPL","NVDA","TSLA","MSFT","AMZN","META","GOOGL","SPY"],
+    averages:{},monitors:{},active_monitor:1,
+    update_interval:1000,chart_zoom:150,default_tf:"30m",rsi_period:14,utility_height:90};
   try {
     const r=await fetch(API+"/api/state");
     const s=await r.json();
@@ -1360,7 +1909,107 @@ async function loadState() {
 async function syncState() {
   await fetch(API+"/api/state",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({monitors:state.monitors,active_monitor:state.active_monitor,
-      sidebar_width:state.sidebar_width??260})});
+      sidebar_width:state.sidebar_width??260,
+      update_interval:updateIntervalMs,
+      chart_zoom:state.chart_zoom||150,
+      default_tf:state.default_tf||"30m",
+      rsi_period:state.rsi_period||14,
+      utility_height:state.utility_height||90})});
+}
+
+// ── SETTINGS POPUP ────────────────────────────────────────────────────────────
+let _settSaveTimer=null;
+function openSettings(){
+  syncSettingsUI();
+  document.getElementById("settings-popup").classList.remove("hidden");
+}
+function closeSettings(){
+  document.getElementById("settings-popup").classList.add("hidden");
+}
+function switchStab(tab){
+  document.querySelectorAll(".sett-tab").forEach(b=>b.classList.toggle("active",b.id==="stab-"+tab));
+  document.getElementById("stab-body-chart").classList.toggle("hidden",tab!=="chart");
+  document.getElementById("stab-body-indicators").classList.toggle("hidden",tab!=="indicators");
+}
+function syncSettingsUI(){
+  const ms=updateIntervalMs;
+  document.querySelectorAll("#sett-interval-presets .sett-preset").forEach(b=>
+    b.classList.toggle("active",parseInt(b.dataset.ms)===ms));
+  const zoom=state.chart_zoom||150;
+  document.getElementById("sett-zoom-slider").value=zoom;
+  document.getElementById("sett-zoom-val").textContent=zoom;
+  const tf=state.default_tf||"30m";
+  document.querySelectorAll("#sett-tf-presets .sett-preset").forEach(b=>
+    b.classList.toggle("active",b.dataset.tf===tf));
+  const rsi=state.rsi_period||14;
+  document.getElementById("sett-rsi-slider").value=rsi;
+  document.getElementById("sett-rsi-val").textContent=rsi;
+  const h=state.utility_height||90;
+  document.getElementById("sett-height-slider").value=h;
+  document.getElementById("sett-height-val").textContent=h+"px";
+}
+function flashSaved(){
+  const el=document.getElementById("sett-saved");
+  el.classList.add("show");
+  clearTimeout(window._settFlash);
+  window._settFlash=setTimeout(()=>el.classList.remove("show"),1500);
+}
+function schedSave(){
+  clearTimeout(_settSaveTimer);
+  _settSaveTimer=setTimeout(async()=>{
+    await fetch(API+"/api/state",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        monitors:state.monitors,active_monitor:state.active_monitor,
+        sidebar_width:state.sidebar_width??260,
+        update_interval:updateIntervalMs,
+        chart_zoom:state.chart_zoom||150,
+        default_tf:state.default_tf||"30m",
+        rsi_period:state.rsi_period||14,
+        utility_height:state.utility_height||90
+      })});
+    flashSaved();
+  },400);
+}
+function setUpdateInterval(ms){
+  updateIntervalMs=ms; state.update_interval=ms;
+  _priceFeedMs=0; startPriceFeed(); // restart feed at new rate immediately
+  document.querySelectorAll("#sett-interval-presets .sett-preset").forEach(b=>
+    b.classList.toggle("active",parseInt(b.dataset.ms)===ms));
+  schedSave();
+}
+function onZoomSlider(v){
+  const n=parseInt(v); state.chart_zoom=n;
+  document.getElementById("sett-zoom-val").textContent=n;
+  schedSave();
+}
+function setDefaultTF(tf){
+  state.default_tf=tf;
+  document.querySelectorAll("#sett-tf-presets .sett-preset").forEach(b=>
+    b.classList.toggle("active",b.dataset.tf===tf));
+  schedSave();
+}
+function onRSISlider(v){
+  const n=parseInt(v); state.rsi_period=n;
+  document.getElementById("sett-rsi-val").textContent=n;
+  panels.forEach(p=>{
+    p.rsiPeriod=n;
+    if(p.candleData&&p.utilityMode==="rsi") drawUtility(p,p.candleData._liveCandles||[]);
+    else if(p.tf==="1s"&&p.liveCandles.length&&p.utilityMode==="rsi") drawUtility(p,p.liveCandles.slice(-p.chartZoom));
+  });
+  schedSave();
+}
+function onHeightSlider(v){
+  const n=parseInt(v); state.utility_height=n;
+  document.getElementById("sett-height-val").textContent=n+"px";
+  applyUtilityHeight(n);
+  schedSave();
+}
+function applyUtilityHeight(h){
+  if(!h) return;
+  panels.forEach(p=>{
+    const el=document.getElementById("utility-panel-"+p.idx);
+    if(el) el.style.height=h+"px";
+  });
 }
 
 // ── CLOCK ─────────────────────────────────────────────────────────────────────
@@ -1373,7 +2022,6 @@ function startClock(){
 function scheduleRefresh(){
   clearTimeout(refreshTimer);
   refreshTimer=setTimeout(()=>{
-    panels.forEach(p=>{if(p.tf!=="1s"&&!p.liveWS&&!p.liveInterval)loadMainChart(p);});
     refreshWatchlistMinis();
     scheduleRefresh();
   },60000);
@@ -1462,13 +2110,17 @@ async function init(){
   scheduleSentiment();
   scheduleDetails();
   scheduleRefresh();
-  initIndicatorUI();
   const preset=getMonitorPreset(state.active_monitor);
   restorePreset(preset);
   updateMonitorTabs();
+  initIndicatorUI(); // after panels built so utility-pine-lbl elements exist
+  loadPineTS(); // preload in background so first activation is instant
+  loadPineFileScripts(); // populate PINE · FILES section from pine_scripts/
 }
 
 document.getElementById("modal").addEventListener("click",e=>{if(e.target.id==="modal")closeModal();});
+document.getElementById("settings-popup").addEventListener("click",e=>{if(e.target.id==="settings-popup")closeSettings();});
+document.getElementById("pine-modal").addEventListener("click",e=>{if(e.target.id==="pine-modal")closePineEditor();});
 
 // ── SIDEBAR RESIZE ────────────────────────────────────────────────────────────
 (()=>{
