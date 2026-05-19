@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """
 Trading Dashboard Server — Raspberry Pi
-Access: http://192.168.178.31:5000
-Builder: http://192.168.178.31:5000/builder
 """
 
 from flask import Flask, jsonify, send_from_directory, request
@@ -16,9 +14,313 @@ try:
     _arima_ok = True
 except ImportError:
     _arima_ok = False
-import json, os, subprocess, time
+import json, os, re, subprocess, time
 import requests as _req
 from datetime import datetime, timezone
+
+
+# ── PINE SCRIPT TRANSLATOR ────────────────────────────────────────────────────
+def _pine_remove_fills(script: str) -> str:
+    """Remove fill() calls that may span multiple lines."""
+    out, depth, active = [], 0, False
+    for line in script.split('\n'):
+        if not active:
+            if re.match(r'\s*fill\s*\(', line):
+                depth = line.count('(') - line.count(')')
+                out.append('// fill() removed')
+                active = depth > 0
+            else:
+                out.append(line)
+        else:
+            depth += line.count('(') - line.count(')')
+            if depth <= 0:
+                active = False
+    return '\n'.join(out)
+
+
+def _pine_comment_method_bodies(script: str) -> str:
+    """Comment out indented bodies after 'method' definitions."""
+    lines = script.split('\n')
+    out = []
+    in_body, body_indent = False, 0
+    for line in lines:
+        stripped = line.strip()
+        if re.match(r'\s*// method:', line):
+            out.append(line)
+            in_body = True
+            body_indent = len(line) - len(line.lstrip())
+            continue
+        if in_body:
+            if not stripped:
+                out.append(line)
+                continue
+            curr = len(line) - len(line.lstrip())
+            if curr > body_indent:
+                out.append('//' + line)
+                continue
+            in_body = False
+        out.append(line)
+    return '\n'.join(out)
+
+
+def _remove_call_lines(script: str, fname: str) -> str:
+    """Comment out all calls to fname(...), handling multi-line calls."""
+    out, depth, active = [], 0, False
+    pattern = re.compile(r'\b' + re.escape(fname) + r'\s*\(')
+    for line in script.split('\n'):
+        if not active:
+            if pattern.search(line):
+                depth = line.count('(') - line.count(')')
+                out.append('// ' + line)
+                active = depth > 0
+            else:
+                out.append(line)
+        else:
+            out.append('// ' + line)
+            depth += line.count('(') - line.count(')')
+            if depth <= 0:
+                active = False
+    return '\n'.join(out)
+
+
+def _stub_security_calls(script: str) -> str:
+    """Replace security()/request.security() tuple destructures with float na vars."""
+    lines = script.split('\n')
+    out = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        # [a, b, c] = request.security(...) or security(...)
+        m = re.match(r'^(\s*)\[([^\]]+)\]\s*=\s*(?:request\.)?security\s*\(', line)
+        if m:
+            indent, varlist = m.group(1), m.group(2)
+            for v in [x.strip() for x in varlist.split(',')]:
+                out.append(f'{indent}float {v} = na')
+            # consume lines until the call closes
+            depth = line.count('(') - line.count(')')
+            while depth > 0 and i + 1 < len(lines):
+                i += 1
+                depth += lines[i].count('(') - lines[i].count(')')
+        else:
+            # simple var = request.security(...) / security(...)
+            if re.search(r'(?:request\.)?security\s*\(', line):
+                line = re.sub(r'\brequest\.security\s*\([^)]*(?:\([^)]*\)[^)]*)*\)', 'na', line)
+                line = re.sub(r'(?<![.\w])security\s*\([^)]*(?:\([^)]*\)[^)]*)*\)', 'na', line)
+            out.append(line)
+        i += 1
+    return '\n'.join(out)
+
+
+def _convert_v4_study(s: str) -> str:
+    """Convert v4 study() → v5 indicator()."""
+    def _repl(m):
+        inner = m.group(1)
+        if re.search(r'\boverlay\s*=', inner):
+            return f'indicator({inner})'
+        # Parse positional args at depth 0
+        depth, parts, cur = 0, [], []
+        for ch in inner:
+            if ch in '([': depth += 1
+            elif ch in ')]': depth -= 1
+            if ch == ',' and depth == 0:
+                parts.append(''.join(cur).strip()); cur = []
+            else:
+                cur.append(ch)
+        if cur:
+            parts.append(''.join(cur).strip())
+        title = parts[0] if parts else '""'
+        overlay = parts[2].strip() if len(parts) > 2 else 'false'
+        return f'indicator({title}, overlay={overlay})'
+    return re.sub(r'\bstudy\s*\(([^)]*(?:\([^)]*\)[^)]*)*)\)', _repl, s)
+
+
+# v2/v3 bare TA function names that need the ta. prefix in v5
+_V2_TA_FUNCS = [
+    'sma', 'ema', 'rma', 'wma', 'vwma', 'atr', 'rsi', 'cci', 'mfi',
+    'mom', 'obv', 'stdev', 'variance', 'highest', 'lowest',
+    'highestbars', 'lowestbars', 'crossover', 'crossunder', 'cross',
+    'rising', 'falling', 'change', 'linreg', 'correlation', 'cum', 'tr',
+    'stoch', 'supertrend', 'bb', 'bbw', 'kc', 'kcw', 'dmi', 'adx',
+    'wpr', 'alma', 'cmo', 'tsi', 'vwap', 'swma', 'pvt',
+]
+
+# v2 bare color names (used without color. prefix)
+_V2_BARE_COLORS = [
+    'red', 'green', 'blue', 'orange', 'yellow', 'purple',
+    'white', 'black', 'gray', 'silver', 'teal', 'lime',
+    'aqua', 'navy', 'maroon', 'olive', 'fuchsia',
+]
+
+
+def _translate_pine(script: str) -> str:
+    """Translate Pine Script v2/v4/v5/v6 → PineTS-compatible subset."""
+    s = script
+
+    # v4: study() → indicator()
+    s = _convert_v4_study(s)
+
+    # version → 5
+    s = re.sub(r'//@version=\d+', '//@version=5', s)
+
+    # remove import statements (external TradingView libraries not supported)
+    s = re.sub(r'^\s*import\s+\S+\s+as\s+\w+[^\n]*\n?', '', s, flags=re.MULTILINE)
+    s = re.sub(r'^\s*import\s+\S+\n?', '', s, flags=re.MULTILINE)
+
+    # security() / request.security() → stub variable declarations as na
+    s = _stub_security_calls(s)
+
+    # strip unsupported indicator() params
+    for p in ['calc_bars_count', 'explicit_plot_zorder', 'max_boxes_count',
+              'max_lines_count', 'max_labels_count', 'max_polylines_count',
+              'max_bars_back']:
+        s = re.sub(r',\s*' + p + r'\s*=\s*[^,)]+', '', s)
+
+    # v2/v3: bare TA function names → ta.* prefix (only where not already prefixed)
+    for fn in _V2_TA_FUNCS:
+        s = re.sub(r'(?<![.\w])' + fn + r'(?=\s*\()', f'ta.{fn}', s)
+
+    # v2: transp= transparency param → strip (deprecated; handled via color.new)
+    s = re.sub(r',\s*transp\s*=\s*[\d.]+', '', s)
+
+    # v2: bare color names → color.NAME (only in color-argument contexts)
+    _COLOR_PARAMS = r'(?:color|textcolor|bgcolor|bordercolor|linecolor|' \
+                    r'framecolor|wickcolor|fill_color|line_color)'
+    for col in _V2_BARE_COLORS:
+        # After color-type parameter: color=teal → color=color.teal
+        s = re.sub(r'\b(' + _COLOR_PARAMS + r'\s*=\s*)' + col + r'\b',
+                   lambda m, c=col: m.group(1) + 'color.' + c, s)
+        # As first arg of color.new(teal, N) → color.new(color.teal, N)
+        s = re.sub(r'\bcolor\.new\s*\(\s*' + col + r'\s*,',
+                   f'color.new(color.{col},', s)
+    # Special: grey → color.gray
+    s = re.sub(r'\b(' + _COLOR_PARAMS + r'\s*=\s*)grey\b',
+               lambda m: m.group(1) + 'color.gray', s)
+
+    # plotshape / plotcandle / barcolor / alert → comment out (unsupported)
+    for fn in ('plotshape', 'plotcandle', 'barcolor', 'alert'):
+        s = _remove_call_lines(s, fn)
+
+    # polyline type declarations → float; polyline.new/methods → na
+    s = re.sub(r'\bpolyline\b(?=\s+\w)', 'float', s)
+    s = re.sub(r'\bpolyline\.new\s*\([^)]*\)', 'na', s)
+    s = re.sub(r'\bpolyline\.\w+\s*\([^)]*\)', 'na', s)
+
+    # ta.bb(src,len,mult) → inline [basis, upper, lower] tuple
+    def _expand_bb(m):
+        src, length, mult = m.group(1), m.group(2), m.group(3)
+        basis = f'ta.sma({src},{length})'
+        dev   = f'({mult})*ta.stdev({src},{length})'
+        return f'[{basis}, {basis}+{dev}, {basis}-{dev}]'
+    s = re.sub(r'\bta\.bb\s*\(([^,)]+),\s*([^,)]+),\s*([^)]+)\)', _expand_bb, s)
+
+    # var const → var
+    s = re.sub(r'\bvar\s+const\b', 'var', s)
+
+    # remove 'simple' type modifier
+    s = re.sub(r'\bsimple\s+(?=float|int|bool|string|color)', '', s)
+
+    # remove enum blocks (v6)
+    s = re.sub(r'\nenum\s+\w+(?:\n(?:[ \t]+[^\n]+|\s*))*', '', s)
+
+    # input.enum() → string of default value name
+    s = re.sub(r'input\.enum\s*\(\s*\w+\.(\w+)\b[^)]*\)',
+               lambda m: f'"{m.group(1)}"', s)
+    s = re.sub(r'input\.enum\s*\([^)]*\)', '"default"', s)
+
+    # method defs → comment out (body stays as plain function)
+    s = re.sub(r'^(\s*)method\s+', r'\1// method: ', s, flags=re.MULTILINE)
+
+    # drawing-type array constructors → float array
+    s = re.sub(r'array\.new\s*<\s*(?:line|label|box|table|linefill|polyline|chart\.point)\s*>\s*\(\)',
+               'array.new<float>()', s)
+    s = re.sub(r'array\.from\s*\(([^)]+)\)', r'array.from(\1)', s)  # keep array.from
+
+    # drawing object creation → na
+    for obj in ['line', 'label', 'box', 'table', 'linefill']:
+        s = re.sub(r'\b' + obj + r'\.new\s*\([^)]*\)', 'na', s)
+        s = re.sub(r'\b' + obj + r'\.\w+\s*\([^)]*\)', 'na', s)
+
+    # .delete() → nothing
+    s = re.sub(r'\.delete\s*\(\s*\)', '', s)
+
+    # matrix → unsupported
+    s = re.sub(r'\bmatrix\s*<\s*\w+\s*>', 'float[]', s)
+    s = re.sub(r'\bmatrix\.\w+\s*(?:<[^>]+>)?\s*\([^)]*\)', 'na', s)
+    s = re.sub(r'(\w+)\.mult\s*\([^)]+\)', r'na', s)
+
+    # color helpers
+    s = re.sub(r'color\.from_gradient\s*\([^)]*\)', 'color.gray', s)
+    s = re.sub(r'\.scale_alpha\s*\(\s*[\d.]+\s*\)', '', s)
+    s = re.sub(r'\bcolor\.new\s*\(\s*[^,)]+,\s*100\s*\)', 'na', s)
+    s = re.sub(r'\bchart\.(?:fg|bg)_color\b', 'color.white', s)
+
+    # remove display=, editable=, force_overlay= params
+    s = re.sub(r',\s*display\s*=\s*(?:display\.)?\w+', '', s)
+    s = re.sub(r',\s*editable\s*=\s*(?:true|false)', '', s)
+    s = re.sub(r',\s*force_overlay\s*=\s*(?:true|false)', '', s)
+
+    # method-style array calls → array.func() form
+    _METHS = ['push','pop','shift','unshift','sort','reverse','clear','copy',
+              'size','avg','median','sum','max','min','stdev','variance',
+              'first','last','get','set','includes','indexof','remove',
+              'insert','slice','join','concat','fill']
+    _ARGS = r'([^()]*(?:\([^)]*\)[^()]*)*)'
+    for meth in _METHS:
+        def _repl(m, _m=meth):
+            obj, args = m.group(1), m.group(2).strip()
+            return f'array.{_m}({obj}{", " + args if args else ""})'
+        s = re.sub(r'\b([A-Za-z_]\w*)\.' + meth + r'\s*\(' + _ARGS + r'\)',
+                   _repl, s)
+
+    # fix first/last that got extra trailing comma
+    s = re.sub(r'array\.first\s*\(([^,)]+),?\s*\)', r'array.get(\1, 0)', s)
+    s = re.sub(r'array\.last\s*\(([^,)]+),?\s*\)',
+               r'array.get(\1, array.size(\1)-1)', s)
+
+    # remove fill() calls
+    s = _pine_remove_fills(s)
+
+    # comment out method bodies
+    s = _pine_comment_method_bodies(s)
+
+    # strip order.ascending/descending
+    s = re.sub(r',\s*order\.(?:ascending|descending)\b', '', s)
+
+    # remove doc-comment annotations
+    s = re.sub(r'//\s*@(?:enum|field|type)\b[^\n]*\n', '', s)
+
+    # v6: extend.* constants
+    s = re.sub(r'\bextend\.(?:none|left|right|both)\b', 'extend.none', s)
+
+    # v6: chart.point → na / float
+    s = re.sub(r'\bchart\.point\.from_time\s*\([^)]*\)', 'na', s)
+    s = re.sub(r'\bchart\.point\.from_index\s*\([^)]*\)', 'na', s)
+    s = re.sub(r'\bchart\.point\.new\s*\([^)]*\)', 'na', s)
+    s = re.sub(r'\bchart\.point\b', 'float', s)
+
+    # v6: runtime.error() → na
+    s = re.sub(r'\bruntime\.error\s*\([^)]*\)', 'na', s)
+
+    # v4: input() with typed positional args
+    s = re.sub(r'\binput\s*\(\s*([^,)]+),\s*([^,)]+),\s*input\.integer([^)]*)\)',
+               r'input.int(\1, \2\3)', s)
+    s = re.sub(r'\binput\s*\(\s*([^,)]+),\s*([^,)]+),\s*input\.float([^)]*)\)',
+               r'input.float(\1, \2\3)', s)
+    s = re.sub(r'\binput\s*\(\s*([^,)]+),\s*([^,)]+),\s*input\.bool([^)]*)\)',
+               r'input.bool(\1, \2\3)', s)
+    s = re.sub(r'\binput\s*\(\s*([^,)]+),\s*([^,)]+),\s*input\.string([^)]*)\)',
+               r'input.string(\1, \2\3)', s)
+
+    # v4: strip inline=, group=, tooltip=, active= params
+    s = re.sub(r',\s*inline\s*=\s*"[^"]*"', '', s)
+    s = re.sub(r',\s*group\s*=\s*"[^"]*"', '', s)
+    s = re.sub(r',\s*tooltip\s*=\s*\w+', '', s)
+    s = re.sub(r',\s*active\s*=\s*\w+', '', s)
+
+    # v6: extend.* constants → extend.none
+    s = re.sub(r'\bextend\.(?:none|left|right|both)\b', 'extend.none', s)
+
+    return s
 
 # ── CHART CACHE ───────────────────────────────────────────────────────────────
 _chart_cache = {}  # key -> (data, expires_at)
@@ -51,8 +353,9 @@ except Exception as e:
 
 DEFAULT_WATCHLIST = ["BTC","AAPL","NVDA","TSLA","MSFT","AMZN","META","GOOGL","SPY"]
 STATE_FILE        = "state.json"
+PINE_DIR          = "pine_scripts"
 CRYPTO_TICKERS    = {"BTC","ETH","BNB","SOL","DOGE","ADA","XRP","AVAX","DOT","LINK"}
-VENV_PACKAGES     = "/home/bastra/trading/trading_dashboard/venv/lib/python3.13/site-packages"
+VENV_PACKAGES     = os.environ.get("VENV_PACKAGES", "")
 
 def load_state():
     defaults = {
@@ -338,11 +641,29 @@ ws.close()
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
+@app.route("/api/pine/scripts")
+def list_pine_scripts():
+    os.makedirs(PINE_DIR, exist_ok=True)
+    scripts = []
+    for fname in sorted(os.listdir(PINE_DIR)):
+        if not fname.endswith(".pine"):
+            continue
+        fid  = "file_" + fname[:-5]
+        name = fname[:-5].replace("_", " ").replace("-", " ").upper()
+        try:
+            with open(os.path.join(PINE_DIR, fname), encoding="utf-8") as f:
+                raw = f.read()
+            scripts.append({"id": fid, "name": name, "script": _translate_pine(raw)})
+        except Exception:
+            pass
+    return jsonify(scripts)
+
 if __name__ == "__main__":
     os.makedirs("static", exist_ok=True)
+    os.makedirs(PINE_DIR, exist_ok=True)
     print("=" * 55)
     print("  Trading Dashboard Server")
     print("  http://0.0.0.0:5000")
-    print(f"  Access via: http://192.168.178.31:5000")
+    print(f"  Access via: http://localhost:5000")
     print("=" * 55)
     app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
