@@ -666,6 +666,8 @@ function setLayout(mode) {
   renderChartContainer();
   setActivePanel(0);
   panels.forEach(p=>loadMainChart(p));
+  _priceFeedBusy=false; // clear busy flag so feed isn't stuck if old tick was in-flight
+  _priceFeedMs=0; startPriceFeed(); // force-restart feed so it picks up the new panels
   updateLayoutButtons(mode);
   saveMonitorPreset();
 }
@@ -730,6 +732,8 @@ function restorePreset(preset) {
   updateLayoutButtons(currentLayout);
   setActivePanel(0);
   panels.forEach(p=>loadMainChart(p));
+  _priceFeedBusy=false;
+  _priceFeedMs=0; startPriceFeed();
 }
 function saveMonitorPreset() {
   state.monitors[String(state.active_monitor)]={
@@ -865,7 +869,7 @@ async function startStockPoll(p) {
 // ── SHARED PRICE FEED ─────────────────────────────────────────────────────────
 // One global interval — fetches each unique ticker once, distributes to all panels.
 // Prevents N-panel × fast-interval = Binance rate-limit hammering.
-let _priceFeed=null, _priceFeedMs=0;
+let _priceFeed=null, _priceFeedMs=0, _priceFeedBusy=false;
 
 function startPriceFeed() {
   if (_priceFeed && _priceFeedMs===updateIntervalMs) return;
@@ -875,38 +879,59 @@ function startPriceFeed() {
 }
 
 async function _priceTick() {
-  // Build ticker → [panels] map (skip 1s and panels mid-reload)
-  const byTicker={};
-  panels.forEach(p=>{
-    if (p.tf==="1s"||!p.candleData||!p.mainChart) return;
-    if (!byTicker[p.ticker]) byTicker[p.ticker]=[];
-    byTicker[p.ticker].push(p);
-  });
-  for (const [ticker,ps] of Object.entries(byTicker)) {
-    try {
-      const binSym=toBinanceSymbol(ticker);
-      let price;
-      if (binSym) {
-        // Crypto: lightweight price-only endpoint, same source as 1s WS, no yfinance delay
-        const r=await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${binSym.toUpperCase()}`);
-        const d=await r.json();
-        if (!d.price) continue;
-        price=parseFloat(d.price);
-      } else {
-        // Stocks: yfinance (free data is delayed, nothing we can do)
-        const r=await fetch(API+`/api/chart/${ticker}?period=1d&interval=1m`);
-        const d=await r.json();
-        if (d.error||!d.candles.length) continue;
-        price=d.last;
+  // Prevent concurrent invocations — if the previous tick's fetches are still
+  // in-flight (slow yfinance / slow network), skip this fire rather than pile up.
+  if (_priceFeedBusy) return;
+  _priceFeedBusy=true;
+  try {
+    // Recovery: if a panel's data loaded but chart creation failed (e.g. DOM
+    // not ready when loadMainChart returned), redraw it now before skipping.
+    panels.forEach(p=>{
+      if (p.tf!=="1s"&&p.candleData&&!p.mainChart) {
+        try { drawMainChart(p,p.candleData); } catch(e){}
       }
-      ps.forEach(p=>{
-        if (!p.candleData||!p.mainChart) return; // re-check after await
-        // Compute change% from panel's own first candle so each TF shows its own range
-        const c0=p.candleData.candles?.[0]?.c;
-        const pct=c0&&c0>0?((price-c0)/c0)*100:0;
-        updateLiveCandle(p,price,pct);
-      });
-    } catch(e){}
+    });
+    // Build ticker → [panels] map (skip 1s and panels still mid-reload)
+    const byTicker={};
+    panels.forEach(p=>{
+      if (p.tf==="1s"||!p.candleData||!p.mainChart) return;
+      if (!byTicker[p.ticker]) byTicker[p.ticker]=[];
+      byTicker[p.ticker].push(p);
+    });
+    for (const [ticker,ps] of Object.entries(byTicker)) {
+      try {
+        const binSym=toBinanceSymbol(ticker);
+        let price;
+        if (binSym) {
+          // Crypto: lightweight price-only endpoint, 5 s timeout
+          const ac=new AbortController();
+          const tid=setTimeout(()=>ac.abort(),5000);
+          const r=await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${binSym.toUpperCase()}`,{signal:ac.signal});
+          clearTimeout(tid);
+          const d=await r.json();
+          if (!d.price) continue;
+          price=parseFloat(d.price);
+        } else {
+          // Stocks: yfinance (free data is delayed, nothing we can do), 8 s timeout
+          const ac=new AbortController();
+          const tid=setTimeout(()=>ac.abort(),8000);
+          const r=await fetch(API+`/api/chart/${ticker}?period=1d&interval=1m`,{signal:ac.signal});
+          clearTimeout(tid);
+          const d=await r.json();
+          if (d.error||!d.candles.length) continue;
+          price=d.last;
+        }
+        ps.forEach(p=>{
+          if (!p.candleData||!p.mainChart) return; // re-check after await
+          // Compute change% from panel's own first candle so each TF shows its own range
+          const c0=p.candleData.candles?.[0]?.c;
+          const pct=c0&&c0>0?((price-c0)/c0)*100:0;
+          updateLiveCandle(p,price,pct);
+        });
+      } catch(e){}
+    }
+  } finally {
+    _priceFeedBusy=false;
   }
 }
 
@@ -975,6 +1000,7 @@ function drawMainChart(p, data) {
   if (indicators.arima&&p.forecastData.length) p.forecastData.forEach(f=>{prices.push(f.ci_lo,f.ci_hi);});
   const minP=Math.min(...prices)*0.999, maxP=Math.max(...prices)*1.001;
   const canvas=makePanelCanvas(p);
+  if (!canvas) return;
   updateStatusBar(p,candles[candles.length-1]);
   p.forecastOffset=candles.length;
   p.mainChart=new Chart(canvas,{
@@ -1002,6 +1028,7 @@ function drawLiveChart(p, lastPrice) {
   const prices=candles.flatMap(c=>[c.h,c.l]); if (avg) prices.push(avg);
   const minP=Math.min(...prices)*0.999, maxP=Math.max(...prices)*1.001;
   const canvas=makePanelCanvas(p);
+  if (!canvas) return;
   updateStatusBar(p,candles[candles.length-1]);
   document.getElementById("main-price-"+p.idx).textContent=fmt(lastPrice);
   p.mainChart=new Chart(canvas,{
@@ -1027,9 +1054,11 @@ function drawLiveChart(p, lastPrice) {
 // ── CANVAS HELPER ─────────────────────────────────────────────────────────────
 function makePanelCanvas(p) {
   const wrap=document.getElementById("canvas-wrap-"+p.idx);
-  const W=wrap.clientWidth-20, H=wrap.clientHeight-16;
+  if (!wrap) return null;
+  const W=Math.max(10,wrap.clientWidth-20), H=Math.max(10,wrap.clientHeight-16);
   if (p.mainChart){p.mainChart.destroy();p.mainChart=null;}
   const old=document.getElementById("main-canvas-"+p.idx);
+  if (!old) return null;
   const canvas=document.createElement("canvas");
   canvas.id="main-canvas-"+p.idx; canvas.width=W; canvas.height=H;
   old.replaceWith(canvas); return canvas;
