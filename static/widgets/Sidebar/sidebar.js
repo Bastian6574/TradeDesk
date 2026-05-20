@@ -1,6 +1,8 @@
 import { App, syncState, API } from '../../core/state.js';
 import { fmt } from '../../core/utils.js';
-import { loadTicker } from '../MainChart/chart.js';
+import { loadTicker, loadTickerAllPanels } from '../MainChart/chart.js';
+
+let _syncOn = false;
 
 // ── WATCHLIST RENDER ──────────────────────────────────────────────────────────
 export function renderWatchlist() {
@@ -16,7 +18,7 @@ export function renderWatchlist() {
       <div class="watch-change" id="wc-${ticker}">—</div>
       <div class="mini-chart-wrap"><canvas id="mc-${ticker}" height="40"></canvas></div>
     `;
-    item.addEventListener("click", () => loadTicker(ticker));
+    item.addEventListener("click", () => _syncOn ? loadTickerAllPanels(ticker) : loadTicker(ticker));
     container.appendChild(item);
     loadMiniChart(ticker);
   });
@@ -73,6 +75,12 @@ export async function removeTicker(ticker, e) {
   if (App.miniCharts[ticker]) { App.miniCharts[ticker].destroy(); delete App.miniCharts[ticker]; }
   await fetch(API + "/api/watchlist", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickers: App.state.watchlist }) });
   renderWatchlist();
+}
+
+export function toggleWatchlistSync() {
+  _syncOn = !_syncOn;
+  const btn = document.getElementById("sidebar-sync-btn");
+  if (btn) btn.classList.toggle("active", _syncOn);
 }
 
 export function searchTicker(e) {
@@ -167,3 +175,4 @@ window.addTicker = addTicker;
 window.removeTicker = removeTicker;
 window.modalKey = modalKey;
 window.searchTicker = searchTicker;
+window.toggleWatchlistSync = toggleWatchlistSync;

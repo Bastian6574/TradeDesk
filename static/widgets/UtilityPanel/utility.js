@@ -1,9 +1,21 @@
 import { App, indicators } from '../../core/state.js';
-import { N_FC, calcRSI, calcMACD } from '../../core/utils.js';
+import { N_FC, TF_N_FC, calcRSI, calcMACD } from '../../core/utils.js';
+
+// Mirrors _xBounds in chart.js — use Math.max so both forecasts active = same range as one alone
+function _extras(p) {
+  const arimaFC = (indicators.arima && p.tf !== "1s")
+    ? (p.forecastData?.length > 0 ? p.forecastData.length : (TF_N_FC[p.tf] || N_FC))
+    : 0;
+  const prophetFC = p.prophetData?.forecast?.length
+    ? p.prophetData.forecast.length
+    : (p.prophetData ? (p.prophetData.n_fc || 14) : 0);
+  return Math.max(arimaFC, prophetFC);
+}
 import { PINE_SCRIPTS, pineActive, loadPineTS, getCustomScript } from '../MainChart/pine.js';
 
 export function drawUtility(p, candles) {
   if (!candles || !candles.length) return;
+  p._lastUtilityCandles = candles;
   const activePineOsc = PINE_SCRIPTS.find(s => !s.overlay && pineActive[s.id]);
   if (activePineOsc) { drawPineOscillator(p, activePineOsc, candles); return; }
   if (p.utilityMode === "macd") drawMACD(p, candles);
@@ -30,12 +42,20 @@ export function drawRSI(p, candles) {
   }
   const xOff = p._xOffset || 0;
   const n = candles.length, zoom = Math.min(p.chartZoom, n);
-  const extras = (indicators.arima ? N_FC : 0) + (p.prophetData ? (p.prophetData.n_fc || 0) : 0);
-  const rsiXMin = n - zoom - xOff - 0.3, rsiXMax = n - xOff - 0.7 + extras;
+  const rsiXMin = n - zoom - xOff - 0.3, rsiXMax = n - xOff - 0.7 + _extras(p);
+  const yZoom = p.widgetSettings?.utilityYZoom || 1.0;
+  let rsiYMin = 0, rsiYMax = 100;
+  if (yZoom > 1.01 && lastRSI !== undefined) {
+    const half = 50 / yZoom;
+    rsiYMin = Math.max(0, lastRSI - half);
+    rsiYMax = Math.min(100, lastRSI + half);
+  }
   if (p.rsiChart && document.contains(p.rsiChart.canvas)) {
     p.rsiChart.data.datasets[0].data = rsiVals.map((v, i) => ({ x: i, y: v }));
     p.rsiChart.options.scales.x.min = rsiXMin;
     p.rsiChart.options.scales.x.max = rsiXMax;
+    p.rsiChart.options.scales.y.min = rsiYMin;
+    p.rsiChart.options.scales.y.max = rsiYMax;
     p.rsiChart.update("none");
     return;
   }
@@ -77,7 +97,7 @@ export function drawRSI(p, candles) {
       }},
       scales: {
         x: { type: "linear", min: rsiXMin, max: rsiXMax, grid: { color: "#1e253011" }, ticks: { display: false } },
-        y: { min: 0, max: 100, position: "right", grid: { color: "#1e253011" }, ticks: { color: "#3d5066", font: { family: "'JetBrains Mono'", size: 8 }, callback: (v) => v === 30 || v === 70 || v === 50 ? v : "" } }
+        y: { min: rsiYMin, max: rsiYMax, position: "right", grid: { color: "#1e253011" }, ticks: { color: "#3d5066", font: { family: "'JetBrains Mono'", size: 8 }, callback: (v) => v === 30 || v === 70 || v === 50 ? v : "" } }
       }
     },
     plugins: [zonesPlugin]
@@ -98,14 +118,25 @@ export function drawMACD(p, candles) {
   if (zoneEl && lastH != null) { zoneEl.textContent = lastH >= 0 ? "BULL" : "BEAR"; zoneEl.style.color = lastH >= 0 ? "var(--green)" : "var(--red)"; }
   const xOff = p._xOffset || 0;
   const n = candles.length, zoom = Math.min(p.chartZoom, n);
-  const extras = (indicators.arima ? N_FC : 0) + (p.prophetData ? (p.prophetData.n_fc || 0) : 0);
-  const macdXMin = n - zoom - xOff - 0.3, macdXMax = n - xOff - 0.7 + extras;
+  const macdXMin = n - zoom - xOff - 0.3, macdXMax = n - xOff - 0.7 + _extras(p);
+  const yZoom = p.widgetSettings?.utilityYZoom || 1.0;
+  let macdYMin, macdYMax;
+  if (yZoom > 1.01) {
+    const allVals = [...macdLine, ...signal, ...hist].filter(v => v != null && isFinite(v));
+    if (allVals.length) {
+      const center = (Math.min(...allVals) + Math.max(...allVals)) / 2;
+      const half = (Math.max(...allVals) - Math.min(...allVals)) / 2 / yZoom * 1.1;
+      macdYMin = center - half; macdYMax = center + half;
+    }
+  }
   if (p.rsiChart && document.contains(p.rsiChart.canvas)) {
     p.rsiChart._hist = hist;
     p.rsiChart.data.datasets[0].data = macdLine.map((v, i) => ({ x: i, y: v }));
     p.rsiChart.data.datasets[1].data = signal.map((v, i) => ({ x: i, y: v }));
     p.rsiChart.options.scales.x.min = macdXMin;
     p.rsiChart.options.scales.x.max = macdXMax;
+    if (macdYMin !== undefined) { p.rsiChart.options.scales.y.min = macdYMin; p.rsiChart.options.scales.y.max = macdYMax; }
+    else { delete p.rsiChart.options.scales.y.min; delete p.rsiChart.options.scales.y.max; }
     p.rsiChart.update("none");
     return;
   }
@@ -153,7 +184,7 @@ export function drawMACD(p, candles) {
       }},
       scales: {
         x: { type: "linear", min: macdXMin, max: macdXMax, grid: { color: "#1e253011" }, ticks: { display: false } },
-        y: { position: "right", grid: { color: "#1e253011" }, ticks: { color: "#3d5066", font: { family: "'JetBrains Mono'", size: 8 }, callback: (v) => v === 0 ? "0" : v.toFixed(2) } }
+        y: { ...(macdYMin !== undefined ? { min: macdYMin, max: macdYMax } : {}), position: "right", grid: { color: "#1e253011" }, ticks: { color: "#3d5066", font: { family: "'JetBrains Mono'", size: 8 }, callback: (v) => v === 0 ? "0" : v.toFixed(2) } }
       }
     },
     plugins: [histPlugin]
@@ -200,8 +231,7 @@ export function renderPineOscillator(p, plots, candles) {
   const COLORS = ["#3e8ef0", "#f03e3e", "#00d47e", "#f0a03e", "#a060f0"];
   const _xOff = p._xOffset || 0;
   const _n = candles.length, _zoom = Math.min(p.chartZoom, _n);
-  const _extras = (indicators.arima ? N_FC : 0) + (p.prophetData ? (p.prophetData.n_fc || 0) : 0);
-  const xMin = _n - _zoom - _xOff - 0.3, xMax = _n - _xOff - 0.7 + _extras;
+  const xMin = _n - _zoom - _xOff - 0.3, xMax = _n - _xOff - 0.7 + _extras(p);
   const datasets = entries.map(([name, pl], i) => {
     const pineColor = pl.data.slice().reverse().find(pt => pt?.options?.color)?.options?.color;
     return { label: name, data: pl.data.map((pt, j) => ({ x: j, y: pt.value ?? null })), borderColor: pineColor || COLORS[i % COLORS.length], borderWidth: 1.5, pointRadius: 0, tension: 0.2, fill: false, showLine: true, spanGaps: false };

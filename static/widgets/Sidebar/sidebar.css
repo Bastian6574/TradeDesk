@@ -11,6 +11,9 @@
 .sidebar-header { padding:8px 10px 6px; border-bottom:1px solid var(--border); color:var(--text3); font-size:10px; letter-spacing:2px; text-transform:uppercase; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
 .add-ticker-btn { background:none; border:1px solid var(--border); color:var(--text3); cursor:pointer; font-family:var(--font); font-size:10px; padding:2px 6px; transition:all 0.15s; }
 .add-ticker-btn:hover { border-color:var(--green); color:var(--green); }
+.sync-btn { background:none; border:1px solid var(--border); color:var(--text3); cursor:pointer; font-family:var(--font); font-size:10px; padding:2px 6px; transition:all 0.15s; letter-spacing:0.5px; }
+.sync-btn:hover { border-color:#4dabf7; color:#4dabf7; }
+.sync-btn.active { border-color:#00d47e; color:#00d47e; box-shadow:0 0 6px #00d47e40; }
 
 #watchlist-items { overflow-y:auto; flex:1; padding:4px 0; }
 #watchlist-items::-webkit-scrollbar { width:3px; }
@@ -27,6 +30,6 @@
 .watch-change.neg { color:var(--red); }
 .mini-chart-wrap { height:40px; position:relative; }
 .mini-chart-wrap canvas { display:block; }
-.remove-btn { position:absolute; top:6px; right:4px; background:none; border:none; color:var(--text3); cursor:pointer; font-size:14px; line-height:1; opacity:0; transition:opacity 0.15s; padding:2px; }
+.remove-btn { position:absolute; top:6px; right:4px; background:none; border:none; color:var(--text3); cursor:pointer; font-size:14px; line-height:1; opacity:0.25; transition:opacity 0.15s; padding:2px; }
 .watch-item:hover .remove-btn { opacity:1; }
 .remove-btn:hover { color:var(--red); }

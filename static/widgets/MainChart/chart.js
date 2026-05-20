@@ -69,6 +69,15 @@ export function buildPanelEl(p) {
         <span id="utility-zone-${i}" style="font-size:9px;"></span>
         <span id="utility-pine-lbl-${i}" style="display:none;font-size:9px;color:var(--text3);letter-spacing:1px;"></span>
         <span style="margin-left:auto;font-size:9px;color:var(--text3);">UTILITY</span>
+        <button class="utility-gear-btn" id="utility-gear-btn-${i}" onclick="toggleUtilitySettings(${i})" title="Scale settings">⚙</button>
+      </div>
+      <div class="utility-settings-popup hidden" id="utility-settings-popup-${i}">
+        <div class="uset-label">Y SCALE</div>
+        <div class="uset-row">
+          <span class="uset-lbl">ZOOM</span>
+          <input type="range" class="uset-slider" id="uset-yzoom-${i}" min="25" max="400" step="25" value="100" oninput="onUtilityYZoom(${i},this.value)">
+          <span class="uset-val" id="uset-yzoom-val-${i}">1.0×</span>
+        </div>
       </div>
       <div class="utility-canvas-wrap" id="utility-canvas-wrap-${i}">
         <canvas id="utility-canvas-${i}"></canvas>
@@ -389,6 +398,19 @@ export function loadTicker(ticker) {
   p.ticker = ticker;
   document.querySelectorAll(".watch-item").forEach(el => el.classList.toggle("active", el.id === "wi-" + ticker));
   loadMainChart(p);
+  saveMonitorPreset();
+  import('../InfoPanel/info.js').then(m => m.fetchDetails(ticker));
+}
+
+// ── SYNC ALL PANELS TO TICKER ─────────────────────────────────────────────────
+export function loadTickerAllPanels(ticker) {
+  App.panels.forEach(p => {
+    p._pineOverlayCache = {};
+    p.candleData = null;
+    p.ticker = ticker;
+  });
+  document.querySelectorAll(".watch-item").forEach(el => el.classList.toggle("active", el.id === "wi-" + ticker));
+  App.panels.forEach(p => { stopPanel(p); _startPanelWidget(p); });
   saveMonitorPreset();
   import('../InfoPanel/info.js').then(m => m.fetchDetails(ticker));
 }
@@ -1471,6 +1493,34 @@ function _makeDraggable(el, handle) {
   });
 }
 
+// ── UTILITY SETTINGS ─────────────────────────────────────────────────────────
+function toggleUtilitySettings(idx) {
+  const popup = document.getElementById("utility-settings-popup-" + idx);
+  if (!popup) return;
+  const opening = popup.classList.contains("hidden");
+  document.querySelectorAll(".utility-settings-popup").forEach(el => el.classList.add("hidden"));
+  if (opening) {
+    popup.classList.remove("hidden");
+    const outside = (e) => {
+      if (!popup.contains(e.target) && e.target.id !== "utility-gear-btn-" + idx) {
+        popup.classList.add("hidden");
+        document.removeEventListener("click", outside);
+      }
+    };
+    setTimeout(() => document.addEventListener("click", outside), 0);
+  }
+}
+
+function onUtilityYZoom(idx, val) {
+  const p = App.panels[idx]; if (!p) return;
+  const zoom = parseFloat(val) / 100;
+  p.widgetSettings = p.widgetSettings || {};
+  p.widgetSettings.utilityYZoom = zoom;
+  const valEl = document.getElementById("uset-yzoom-val-" + idx);
+  if (valEl) valEl.textContent = zoom.toFixed(2).replace(/\.?0+$/, "") + "×";
+  if (p._lastUtilityCandles) drawUtility(p, p._lastUtilityCandles);
+}
+
 // Expose inline-HTML onclick functions
 window.setPanelTF = setPanelTF;
 window.setUtilityMode = setUtilityMode;
@@ -1485,3 +1535,5 @@ window.splitPanel = splitPanel;
 window.closePanel = closePanel;
 window.togglePinePopup = togglePinePopup;
 window.resetPanelView = resetPanelView;
+window.toggleUtilitySettings = toggleUtilitySettings;
+window.onUtilityYZoom = onUtilityYZoom;

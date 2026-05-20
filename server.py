@@ -376,11 +376,19 @@ def load_state():
         "monitors":       {"1": "BTC", "2": "NVDA", "3": "SPY"}
     }
     if os.path.exists(STATE_FILE):
-        saved = json.load(open(STATE_FILE))
-        for k, v in defaults.items():
-            if k not in saved:
-                saved[k] = v
-        return saved
+        try:
+            with open(STATE_FILE) as f:
+                raw = f.read().strip()
+            # Auto-heal common corruption: extra trailing }
+            while raw.endswith('}}') and not raw.endswith('}}}'):
+                raw = raw[:-1]
+            saved = json.loads(raw)
+            for k, v in defaults.items():
+                if k not in saved:
+                    saved[k] = v
+            return saved
+        except Exception:
+            pass
     return defaults
 
 def save_state(state):
