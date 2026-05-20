@@ -1,4 +1,4 @@
-import { App, loadState } from './state.js';
+import { App, loadState, loadStateBackup, saveStateBackup } from './state.js';
 import { initResearch } from '../widgets/Research/research.js';
 import './settings.js';
 import { loadMainChart, getMonitorPreset, restorePreset, updateMonitorTabs, drawMainChart, drawLiveChart } from '../widgets/MainChart/chart.js';
@@ -67,5 +67,28 @@ async function init() {
   loadPineFileScripts();
   initResearch();
 }
+
+// ── RESTORE LAYOUT ────────────────────────────────────────────────────────────
+window.restoreLayout = function() {
+  const backup = loadStateBackup();
+  if (!backup || !backup.monitors || Object.keys(backup.monitors).length === 0) {
+    const btn = document.getElementById("restore-layout-btn");
+    if (btn) { btn.textContent = "NO BACKUP"; setTimeout(() => { btn.textContent = "⟳ RESTORE"; }, 2000); }
+    return;
+  }
+  App.state.monitors       = backup.monitors;
+  App.state.watchlist      = backup.watchlist  || App.state.watchlist;
+  App.state.averages       = backup.averages   || {};
+  App.state.active_monitor = backup.active_monitor ?? 1;
+  App.state.sidebar_width  = backup.sidebar_width  ?? 260;
+  App.panels.forEach(p => { import('../widgets/MainChart/chart.js').then(m => m.stopPanel(p)); });
+  const preset = getMonitorPreset(App.state.active_monitor);
+  restorePreset(preset);
+  updateMonitorTabs();
+  import('../widgets/Sidebar/sidebar.js').then(m => { m.renderWatchlist(); });
+  if (window.sidebarRestore) window.sidebarRestore(App.state.sidebar_width);
+  const btn = document.getElementById("restore-layout-btn");
+  if (btn) { btn.textContent = "✓ RESTORED"; setTimeout(() => { btn.textContent = "⟳ RESTORE"; }, 2000); }
+};
 
 init();

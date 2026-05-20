@@ -11,6 +11,8 @@
 #ticker-search { background:var(--bg3); border:1px solid var(--border); color:var(--text); padding:4px 10px; font-family:var(--font); font-size:11px; width:120px; letter-spacing:1px; outline:none; }
 #ticker-search:focus { border-color:var(--blue); }
 #ticker-search::placeholder { color:var(--text3); }
+#restore-layout-btn { background:none; border:1px solid #f5a623; color:#f5a623; cursor:pointer; font-family:var(--font); font-size:10px; padding:3px 8px; letter-spacing:0.5px; transition:all 0.15s; line-height:1; }
+#restore-layout-btn:hover { background:#f5a62322; }
 #settings-btn { background:none; border:1px solid var(--border); color:var(--text3); cursor:pointer; font-family:var(--font); font-size:14px; padding:2px 8px; line-height:1; transition:all 0.15s; }
 #settings-btn:hover { border-color:var(--border2); color:var(--text2); }
 

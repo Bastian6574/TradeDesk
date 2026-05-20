@@ -36,9 +36,43 @@ export const indicators = (() => {
 })();
 export function saveIndicators() { localStorage.setItem("td_indicators", JSON.stringify(indicators)); }
 
+const _BACKUP_KEY = "td_state_backup";
+const _EMPTY_MONITORS = { "1": { charts: [{ ticker: "BTC", tf: "30m", utilityMode: "rsi", widgetMode: "candles", widgetSettings: {} }] } };
+
+function _looksLikeDefaults(s) {
+  // Server returned reset state: no saved monitors or a bare single BTC entry
+  if (!s.monitors) return true;
+  const keys = Object.keys(s.monitors);
+  if (keys.length === 0) return true;
+  const m1 = s.monitors["1"];
+  if (!m1 || typeof m1 === "string") return true;  // old format "BTC"
+  const charts = m1.charts || [];
+  if (charts.length === 1 && !m1.layoutRows) return true;  // bare default
+  return false;
+}
+
+export function saveStateBackup() {
+  const { state } = App;
+  if (!state.monitors || Object.keys(state.monitors).length === 0) return;
+  try {
+    localStorage.setItem(_BACKUP_KEY, JSON.stringify({
+      monitors:       state.monitors,
+      watchlist:      state.watchlist,
+      averages:       state.averages || {},
+      active_monitor: state.active_monitor,
+      sidebar_width:  state.sidebar_width ?? 260,
+    }));
+  } catch (_e) {}
+}
+
+export function loadStateBackup() {
+  try { return JSON.parse(localStorage.getItem(_BACKUP_KEY) || "null"); }
+  catch { return null; }
+}
+
 export async function loadState() {
   const defaults = {
-    watchlist: ["BTC","AAPL","NVDA","TSLA","MSFT","AMZN","META","GOOGL","SPY"],
+    watchlist: ["BTC","ANET","MSTR","ORCL","PLTR"],
     averages: {}, monitors: {}, active_monitor: 1,
     update_interval: 1000, chart_zoom: 150, default_tf: "30m",
     rsi_period: 14, utility_height: 90, sidebar_width: 260,
@@ -48,6 +82,19 @@ export async function loadState() {
     const s = await r.json();
     App.state = { ...defaults, ...s };
     if (s.update_interval) App.updateIntervalMs = s.update_interval;
+    // If server returned bare defaults, silently restore from localStorage backup
+    if (_looksLikeDefaults(s)) {
+      const backup = loadStateBackup();
+      if (backup?.monitors && !_looksLikeDefaults(backup)) {
+        App.state.monitors       = backup.monitors;
+        App.state.watchlist      = backup.watchlist  || App.state.watchlist;
+        App.state.averages       = backup.averages   || {};
+        App.state.active_monitor = backup.active_monitor ?? 1;
+        App.state.sidebar_width  = backup.sidebar_width  ?? 260;
+      }
+    } else {
+      saveStateBackup(); // good state from server — update backup
+    }
   } catch (e) { App.state = { ...defaults }; }
 }
 
@@ -68,6 +115,7 @@ export function getContextTicker() {
 
 export async function syncState() {
   const { state } = App;
+  saveStateBackup();
   await fetch(API + "/api/state", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
