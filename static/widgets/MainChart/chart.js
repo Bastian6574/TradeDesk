@@ -95,7 +95,7 @@ export function buildPanelEl(p) {
         <option value="candles">CHART</option>
         <option value="liquidation">LIQ MAP</option>
         <option value="level2">LEVEL 2</option>
-        <option value="console">CONSOLE</option>
+        <option value="console">BRAIN v1.0</option>
       </select>
       <button class="pine-btn" id="pine-btn-${i}" onclick="togglePinePopup()">PINE</button>
       <button class="split-btn" onclick="splitPanel(${i},'H')" title="Add panel beside">+H</button>
