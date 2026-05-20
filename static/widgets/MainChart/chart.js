@@ -4,6 +4,7 @@ import { PINE_SCRIPTS, pineActive, applyActivePineOverlays, applyPineOverlayToPa
 import { drawUtility } from '../UtilityPanel/utility.js';
 import { startLiquidationMap, stopLiquidationMap } from '../LiquidationMap/liquidation.js';
 import { startLevel2, stopLevel2 } from '../Level2/level2.js';
+import { startConsole, stopConsole } from '../Console/console.js';
 
 // ── PROPHET REFRESH CALLBACK (registered by predictions.js to avoid circular import) ──
 let _prophetRefreshFn = null;
@@ -94,6 +95,7 @@ export function buildPanelEl(p) {
         <option value="candles">CHART</option>
         <option value="liquidation">LIQ MAP</option>
         <option value="level2">LEVEL 2</option>
+        <option value="console">CONSOLE</option>
       </select>
       <button class="pine-btn" id="pine-btn-${i}" onclick="togglePinePopup()">PINE</button>
       <button class="split-btn" onclick="splitPanel(${i},'H')" title="Add panel beside">+H</button>
@@ -748,7 +750,7 @@ function _xBounds(p, candles) {
   const n = candles.length;
   const zoom = Math.min(p.chartZoom, n);
   const xOff = p._xOffset || 0;
-  const arimaFC = indicators.arima
+  const arimaFC = (indicators.arima && p.tf !== "1s")
     ? (p.forecastData.length > 0 ? p.forecastData.length : (TF_N_FC[p.tf] || N_FC))
     : 0;
   const prophetFC = p.prophetData?.forecast?.length
@@ -1245,6 +1247,7 @@ export function setWidgetMode(idx, mode) {
     // Stop non-chart widgets and restore canvas-wrap if needed
     stopLiquidationMap(p);
     stopLevel2(p);
+    stopConsole(p);
     const canvasWrap = document.getElementById("canvas-wrap-" + idx);
     if (canvasWrap && !document.getElementById("main-canvas-" + idx)) {
       canvasWrap.style.flexDirection = "";
@@ -1262,8 +1265,12 @@ export function setWidgetMode(idx, mode) {
     if (p.liveWS) { p.liveWS.close(); p.liveWS = null; }
     if (p.liveInterval) { clearInterval(p.liveInterval); p.liveInterval = null; }
     if (p.mainChart) { p.mainChart.destroy(); p.mainChart = null; }
+    stopLiquidationMap(p);
+    stopLevel2(p);
+    stopConsole(p);
     if (mode === "liquidation") startLiquidationMap(p);
     else if (mode === "level2") startLevel2(p);
+    else if (mode === "console") startConsole(p);
   }
 
   saveMonitorPreset();
@@ -1274,6 +1281,7 @@ function _startPanelWidget(p) {
   const mode = p.widgetMode || "candles";
   if (mode === "liquidation") { startLiquidationMap(p); }
   else if (mode === "level2") { startLevel2(p); }
+  else if (mode === "console") { startConsole(p); }
   else { loadMainChart(p); }
 }
 

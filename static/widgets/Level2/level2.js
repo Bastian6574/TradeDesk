@@ -45,6 +45,7 @@ function _buildL2DOM(p) {
   const canvasWrap = document.getElementById("canvas-wrap-" + p.idx);
   if (!canvasWrap) return;
   if (p.mainChart) { p.mainChart.destroy(); p.mainChart = null; }
+  canvasWrap.style.display = "flex";
   canvasWrap.style.flexDirection = "column";
   canvasWrap.style.padding = "0";
   canvasWrap.innerHTML = `
@@ -345,57 +346,59 @@ function _drawDepthChart(p) {
   for (const b of bids) { bidCum += b.qty; cumBids.push({ price: b.price, cum: bidCum }); }
   for (const a of asks) { askCum += a.qty; cumAsks.push({ price: a.price, cum: askCum }); }
 
-  const maxCum     = Math.max(bidCum, askCum);
-  const minPrice   = bids[bids.length - 1]?.price ?? 0;
-  const maxPrice   = asks[asks.length - 1]?.price ?? 0;
-  const priceRange = maxPrice - minPrice || 1;
-  const bestBid    = bids[0].price, bestAsk = asks[0].price;
-  const mid        = (bestBid + bestAsk) / 2;
-
-  const toX = price => ((price - minPrice) / priceRange) * W;
+  const maxCum    = Math.max(bidCum, askCum);
+  const bestBid   = bids[0].price, bestAsk = asks[0].price;
+  const mid       = (bestBid + bestAsk) / 2;
+  const minPrice  = bids[bids.length - 1]?.price ?? 0;
+  const maxPrice  = asks[asks.length - 1]?.price ?? 0;
+  // Center x-axis at mid so the center dashed line is always pinned at W/2
+  const halfRange = Math.max(mid - minPrice, maxPrice - mid) || 1;
+  const toX = price => W / 2 + ((price - mid) / halfRange) * (W / 2);
   const toY = cum   => H - (cum / maxCum) * H * 0.9;
 
+  // Subtle horizontal grid lines (no labels)
   ctx.strokeStyle = "#1e253015"; ctx.lineWidth = 1;
   for (let i = 1; i <= 4; i++) {
     const y = H - (i / 4) * H * 0.9;
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-    ctx.fillStyle = "#3d5066"; ctx.font = "8px 'JetBrains Mono'"; ctx.textAlign = "right";
-    ctx.fillText(_fmtQt((i / 4) * maxCum), W - 4, y - 2);
   }
 
+  // Bids: origin at center (W/2, H), step left+up, extend stroke to left edge
   ctx.beginPath();
-  ctx.moveTo(toX(bestBid), H);
+  ctx.moveTo(W / 2, H);
   cumBids.forEach(({ price, cum }) => ctx.lineTo(toX(price), toY(cum)));
-  ctx.lineTo(toX(minPrice), H);
+  ctx.lineTo(0, toY(bidCum));  // extend horizontally to left edge
+  ctx.lineTo(0, H);
   ctx.closePath();
   ctx.fillStyle = "#00d47e22"; ctx.fill();
+
   ctx.strokeStyle = "#00d47e88"; ctx.lineWidth = 1.5;
   ctx.beginPath();
-  cumBids.forEach(({ price, cum }, i) => { i === 0 ? ctx.moveTo(toX(bestBid), H) : null; ctx.lineTo(toX(price), toY(cum)); });
+  ctx.moveTo(W / 2, H);
+  cumBids.forEach(({ price, cum }) => ctx.lineTo(toX(price), toY(cum)));
+  ctx.lineTo(0, toY(bidCum));  // extend to left edge, no gap
   ctx.stroke();
 
+  // Asks: origin at center (W/2, H), step right+up, extend stroke to right edge
   ctx.beginPath();
-  ctx.moveTo(toX(bestAsk), H);
+  ctx.moveTo(W / 2, H);
   cumAsks.forEach(({ price, cum }) => ctx.lineTo(toX(price), toY(cum)));
-  ctx.lineTo(toX(maxPrice), H);
+  ctx.lineTo(W, toY(askCum));  // extend horizontally to right edge
+  ctx.lineTo(W, H);
   ctx.closePath();
   ctx.fillStyle = "#f03e3e22"; ctx.fill();
+
   ctx.strokeStyle = "#f03e3e88"; ctx.lineWidth = 1.5;
   ctx.beginPath();
-  cumAsks.forEach(({ price, cum }, i) => { i === 0 ? ctx.moveTo(toX(bestAsk), H) : null; ctx.lineTo(toX(price), toY(cum)); });
+  ctx.moveTo(W / 2, H);
+  cumAsks.forEach(({ price, cum }) => ctx.lineTo(toX(price), toY(cum)));
+  ctx.lineTo(W, toY(askCum));  // extend to right edge, no gap
   ctx.stroke();
 
-  const midX = toX(mid);
+  // Center dashed line — always pinned at W/2
   ctx.strokeStyle = "#6a809966"; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
-  ctx.beginPath(); ctx.moveTo(midX, 0); ctx.lineTo(midX, H); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(W / 2, 0); ctx.lineTo(W / 2, H); ctx.stroke();
   ctx.setLineDash([]);
-
-  ctx.fillStyle = "#6a8099"; ctx.font = "8px 'JetBrains Mono'"; ctx.textAlign = "center";
-  [minPrice, bestBid, mid, bestAsk, maxPrice].forEach(pr => {
-    const x = toX(pr);
-    if (x < 20 || x > W - 20) return;
-    ctx.fillText(fmt(pr), x, H - 4);
-  });
 }
 
 function _drawPlaceholder(p, msg) {

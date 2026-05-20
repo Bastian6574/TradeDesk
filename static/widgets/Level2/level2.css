@@ -26,7 +26,9 @@
 
 /* ── DEPTH CHART (left) ── */
 .l2-depth-pane { flex:1; min-width:0; position:relative; overflow:hidden; }
-.l2-canvas     { display:block; }
+/* position:absolute + inset:0 keeps the canvas exactly the pane size without
+   affecting pane layout — avoids the canvas.height attribute growing the pane */
+.l2-canvas     { display:block; position:absolute; inset:0; }
 
 /* ── TRADE TAPE (right) ── */
 .l2-tape-pane     { flex:0 0 210px; display:flex; flex-direction:column; border-left:1px solid var(--border); background:var(--bg); overflow:hidden; }

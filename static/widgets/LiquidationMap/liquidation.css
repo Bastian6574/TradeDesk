@@ -1,7 +1,6 @@
 /* ── LIQUIDATION MAP WIDGET ── */
-.liq-wrap { flex:1; display:flex; overflow:hidden; position:relative; min-height:0; }
-.liq-canvas-main { flex:1; display:block; }
-.liq-canvas-hist { width:80px; flex-shrink:0; display:block; border-left:1px solid var(--border); }
+.liq-wrap { flex:1; overflow:hidden; min-height:0; position:relative; }
+.liq-canvas-main { display:block; position:absolute; inset:0; }
 .liq-header { padding:3px 10px; background:var(--bg2); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; font-size:9px; color:var(--text3); letter-spacing:1px; flex-shrink:0; height:22px; }
 .liq-legend { display:flex; gap:8px; align-items:center; }
 .liq-leg-item { display:flex; align-items:center; gap:3px; }

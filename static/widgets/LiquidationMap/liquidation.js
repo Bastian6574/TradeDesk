@@ -23,21 +23,31 @@ function _buildLiqDOM(p) {
   const canvasWrap = document.getElementById("canvas-wrap-" + p.idx);
   if (!canvasWrap) return;
   if (p.mainChart) { p.mainChart.destroy(); p.mainChart = null; }
+  canvasWrap.style.display = "flex";
   canvasWrap.style.flexDirection = "column";
   canvasWrap.style.padding = "0";
   canvasWrap.innerHTML = `
     <div class="liq-header">
       <div class="liq-legend">
-        <div class="liq-leg-item"><div class="liq-leg-dot" style="background:#f03e3e88"></div>LONG LIQ</div>
-        <div class="liq-leg-item"><div class="liq-leg-dot" style="background:#00d47e88"></div>SHORT LIQ</div>
+        <div class="liq-leg-item"><div class="liq-leg-dot" style="background:#f03e3e"></div>LONG LIQ</div>
+        <div class="liq-leg-item"><div class="liq-leg-dot" style="background:#00d47e"></div>SHORT LIQ</div>
       </div>
       <span class="liq-count" id="liq-count-${p.idx}">waiting for data…</span>
     </div>
     <div class="liq-wrap" id="liq-wrap-${p.idx}">
       <canvas class="liq-canvas-main" id="liq-main-${p.idx}"></canvas>
-      <canvas class="liq-canvas-hist" id="liq-hist-${p.idx}"></canvas>
     </div>
   `;
+
+  // Scroll wheel adjusts the rolling window size
+  const wrap = document.getElementById("liq-wrap-" + p.idx);
+  if (wrap) {
+    wrap.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 20 : -20;
+      p._liqZoom = Math.max(50, Math.min(LIQ_DISPLAY, (p._liqZoom || 150) + delta));
+    }, { passive: false });
+  }
 }
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
@@ -50,10 +60,11 @@ function _initLiqState(p) {
   p._liqMinPrice   = null;
   p._liqMaxPrice   = null;
   p._liqCurrentPrice = null;
-  // Seed price history from existing candle data
+  p._liqZoom = 150; // rolling window — adjustable via scroll wheel
+  // Seed price history from existing candle data (no liquidation color)
   if (p.candleData?._liveCandles) {
     p.candleData._liveCandles.slice(-200).forEach(c => {
-      p._liqPriceHistory.push({ t: c.t, price: c.c });
+      p._liqPriceHistory.push({ t: c.t, price: c.c, color: null });
     });
     const last = p.candleData._liveCandles[p.candleData._liveCandles.length - 1];
     if (last) p._liqCurrentPrice = last.c;
@@ -90,7 +101,7 @@ function _startLiqStream(p) {
         const isLong = o.S === "SELL"; // SELL side liquidation = long position got liquidated
 
         p._liqCurrentPrice = price;
-        p._liqPriceHistory.push({ t: o.T, price });
+        p._liqPriceHistory.push({ t: o.T, price, color: isLong ? 'long' : 'short' });
         if (p._liqPriceHistory.length > LIVE_MAX) p._liqPriceHistory.shift();
 
         if (isLong) p._liqTotalLong += usdVal;
@@ -117,7 +128,7 @@ function _startLiqStream(p) {
       const last = active.candleData._liveCandles[active.candleData._liveCandles.length - 1];
       if (last) {
         p._liqCurrentPrice = last.c;
-        p._liqPriceHistory.push({ t: Date.now(), price: last.c });
+        p._liqPriceHistory.push({ t: Date.now(), price: last.c, color: null });
         if (p._liqPriceHistory.length > LIVE_MAX) p._liqPriceHistory.shift();
       }
     }
@@ -153,42 +164,49 @@ function _renderLoop(p) {
   p._liqRaf = requestAnimationFrame(frame);
 }
 
+const LIQ_DISPLAY = 400; // max rolling window
+const RMARGIN    = 62;   // price scale column on the right (ticks + label)
+
 function _drawLiqMain(p) {
   const canvas = document.getElementById("liq-main-" + p.idx);
   const wrap   = document.getElementById("liq-wrap-" + p.idx);
   if (!canvas || !wrap) return;
-  const W = wrap.clientWidth - 80, H = wrap.clientHeight;
+  const W = wrap.clientWidth, H = wrap.clientHeight;
   if (W <= 0 || H <= 0) return;
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, W, H);
 
-  // Price axis range
-  const cur = p._liqCurrentPrice;
+  const cur     = p._liqCurrentPrice;
   const history = p._liqPriceHistory;
   if (!cur || !history.length) { _drawNoData(ctx, W, H, "Waiting for liquidations…"); return; }
 
-  const prices = history.map(h => h.price);
-  const rawMin = Math.min(...prices), rawMax = Math.max(...prices);
-  const pad = (rawMax - rawMin) * 0.1 || cur * 0.02;
-  const minP = rawMin - pad, maxP = rawMax + pad;
+  const zoom   = p._liqZoom || 150;
+  const disp   = history.slice(-zoom);
+  const n      = disp.length;
+  const chartW = W - RMARGIN; // line area
+
+  const prices     = disp.map(h => h.price);
+  const rawMin     = Math.min(...prices, cur), rawMax = Math.max(...prices, cur);
+  const pad        = (rawMax - rawMin) * 0.1 || cur * 0.02;
+  const minP       = rawMin - pad, maxP = rawMax + pad;
   const priceRange = maxP - minP;
 
   const toY = price => H - ((price - minP) / priceRange) * H;
-  const toX = (idx, total) => (idx / Math.max(total - 1, 1)) * W;
+  const toX = idx   => (idx / Math.max(n - 1, 1)) * chartW;
 
-  // Background grid
+  // Background grid lines (chart area only)
   ctx.strokeStyle = "#1e253022"; ctx.lineWidth = 1;
   for (let i = 0; i <= 4; i++) {
     const y = (i / 4) * H;
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-    const price = maxP - (i / 4) * priceRange;
-    ctx.fillStyle = "#3d5066"; ctx.font = "9px 'JetBrains Mono'";
-    ctx.textAlign = "left"; ctx.fillText(fmt(price), 4, y - 2);
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(chartW, y); ctx.stroke();
   }
 
-  // Liquidation events as vertical bars at their price level (using bins mapped to time)
-  // Show liquidation "rain" — bars at bottom proportional to volume
+  // Vertical separator between chart area and price scale
+  ctx.strokeStyle = "#2a3545"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(chartW, 0); ctx.lineTo(chartW, H); ctx.stroke();
+
+  // Liquidation bins as horizontal bands
   if (p._liqMinPrice !== null) {
     const binRange = p._liqMaxPrice - p._liqMinPrice;
     const maxVol = Math.max(...p._liqBins.map(b => b.longVol + b.shortVol), 1);
@@ -199,71 +217,79 @@ function _drawLiqMain(p) {
       const y = toY(binPrice);
       const barH = Math.max(1, (total / maxVol) * 40);
       const longFrac = bin.longVol / total;
-      // Green-red gradient
       const r = Math.round(240 * (1 - longFrac)), g = Math.round(211 * longFrac);
       ctx.fillStyle = `rgba(${r},${g},62,0.5)`;
-      ctx.fillRect(0, y - barH / 2, W, barH);
+      ctx.fillRect(0, y - barH / 2, chartW, barH);
     });
   }
 
-  // Price line
-  if (history.length > 1) {
-    ctx.beginPath(); ctx.strokeStyle = "#c8d8e8"; ctx.lineWidth = 1.5;
-    history.forEach((h, i) => {
-      const x = toX(i, history.length), y = toY(h.price);
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-    });
+  // Price line — color per segment by direction (green = up tick, red = down tick)
+  if (n > 1) {
+    for (let i = 1; i < n; i++) {
+      const prev = disp[i - 1], cur = disp[i];
+      const segColor = cur.price > prev.price ? '#00d47e'
+                     : cur.price < prev.price ? '#f03e3e'
+                     : '#6a8099';
+      ctx.strokeStyle = segColor; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(toX(i - 1), toY(prev.price));
+      ctx.lineTo(toX(i),     toY(cur.price));
+      ctx.stroke();
+    }
+  }
+
+  // Liquidation event dots on top of the line
+  for (let i = 0; i < n; i++) {
+    const h = disp[i];
+    if (h.color !== 'long' && h.color !== 'short') continue;
+    const dotColor = h.color === 'long' ? '#f03e3e' : '#00d47e';
+    ctx.fillStyle = dotColor;
+    ctx.beginPath();
+    ctx.arc(toX(i), toY(h.price), 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#0a0c0f'; ctx.lineWidth = 0.8;
     ctx.stroke();
   }
 
-  // Current price label
-  const priceY = toY(cur);
-  ctx.fillStyle = "#0a0c0f"; ctx.fillRect(W - 62, priceY - 8, 62, 16);
-  ctx.fillStyle = "#c8d8e8"; ctx.font = "bold 10px 'JetBrains Mono'";
-  ctx.textAlign = "center"; ctx.fillText(fmt(cur), W - 31, priceY + 3);
-}
+  // Price scale tick labels in the right margin
+  ctx.font = "9px 'JetBrains Mono'"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  for (let i = 0; i <= 4; i++) {
+    const price = minP + (i / 4) * priceRange;
+    const y     = toY(price);
+    ctx.strokeStyle = "#2a354560"; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(chartW, y); ctx.lineTo(chartW + 5, y); ctx.stroke();
+    ctx.fillStyle = "#8faabb";
+    ctx.fillText(fmt(price), chartW + 7, y);
+  }
 
-function _drawLiqHist(p) {
-  const canvas = document.getElementById("liq-hist-" + p.idx);
-  const wrap   = document.getElementById("liq-wrap-" + p.idx);
-  if (!canvas || !wrap) return;
-  const W = 79, H = wrap.clientHeight;
-  if (H <= 0) return;
-  canvas.width = W; canvas.height = H;
-  const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, W, H);
+  // Dashed connector from last point to price scale
+  const curY    = Math.max(10, Math.min(H - 10, toY(cur)));
+  const lineEndX = n > 0 ? toX(n - 1) : 0;
+  ctx.save();
+  ctx.strokeStyle = "#c8d8e870"; ctx.lineWidth = 0.8; ctx.setLineDash([3, 4]);
+  ctx.beginPath(); ctx.moveTo(lineEndX, curY); ctx.lineTo(chartW, curY); ctx.stroke();
+  ctx.restore();
 
-  const cur = p._liqCurrentPrice;
-  const history = p._liqPriceHistory;
-  if (!cur || !history.length || p._liqMinPrice === null) return;
-
-  const prices = history.map(h => h.price);
-  const minP = Math.min(...prices) * 0.999, maxP = Math.max(...prices) * 1.001;
-  const priceRange = maxP - minP;
-  const toY = price => H - ((price - minP) / priceRange) * H;
-
-  const binRange = p._liqMaxPrice - p._liqMinPrice;
-  const maxVol = Math.max(...p._liqBins.map(b => b.longVol + b.shortVol), 1);
-
-  p._liqBins.forEach((bin, i) => {
-    const total = bin.longVol + bin.shortVol; if (total === 0) return;
-    const binPrice = p._liqMinPrice + (i + 0.5) / BINS * binRange;
-    if (binPrice < minP || binPrice > maxP) return;
-    const y = toY(binPrice);
-    const barW = Math.max(2, (total / maxVol) * (W - 20));
-    const longFrac = bin.longVol / total;
-
-    // Split bar: long portion red, short portion green
-    const longW = barW * longFrac, shortW = barW * (1 - longFrac);
-    ctx.fillStyle = "#f03e3e99"; ctx.fillRect(0, y - 1.5, longW, 3);
-    ctx.fillStyle = "#00d47e99"; ctx.fillRect(longW, y - 1.5, shortW, 3);
-  });
-
-  // Current price tick
-  const curY = toY(cur);
+  // White tick across the scale column at current price
   ctx.strokeStyle = "#c8d8e8"; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(0, curY); ctx.lineTo(W, curY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(chartW, curY); ctx.lineTo(W, curY); ctx.stroke();
+
+  // Price label box
+  const labelX = chartW + 2;
+  const labelW = RMARGIN - 4;
+  ctx.fillStyle = "#0f1923";
+  ctx.fillRect(labelX, curY - 9, labelW, 18);
+  ctx.strokeStyle = "#c8d8e8"; ctx.lineWidth = 1;
+  ctx.strokeRect(labelX, curY - 9, labelW, 18);
+  ctx.fillStyle = "#c8d8e8";
+  ctx.font = "bold 9px 'JetBrains Mono'";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(fmt(cur), labelX + labelW / 2, curY);
 }
+
+// Price scale is now drawn inside _drawLiqMain's right margin — no separate hist canvas needed
+function _drawLiqHist(_p) {}
 
 function _drawNoData(ctx, W, H, msg) {
   ctx.fillStyle = "#3d5066"; ctx.font = "10px 'JetBrains Mono'";

@@ -856,6 +856,7 @@ _PROPHET_CFG = {
     "30m": {"period": "1mo", "seasonal": 48, "n_fc": 24, "max_fit": 500},
     "15m": {"period": "10d", "seasonal": 26, "n_fc": 16, "max_fit": 400},
     "5m":  {"period": "5d",  "seasonal": 12, "n_fc": 12, "max_fit": 300},
+    "1m":  {"period": "5d",  "seasonal": None, "n_fc": 30, "max_fit": 200},
 }
 
 @app.route("/api/prophet/<ticker>")

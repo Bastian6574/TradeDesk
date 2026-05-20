@@ -166,7 +166,7 @@ function _applyProphetToPanels(dataByTF) {
 
 // ── TF-SWITCH REFRESH (called by chart.js via registerProphetRefresh) ─────────
 async function _onPanelTFChange(p, gen) {
-  if (!_prophetCache || p.tf === "1m") { p.prophetData = null; return; }
+  if (!_prophetCache) { p.prophetData = null; return; }
   try {
     const r = await fetch(API + `/api/prophet/${p.ticker}?interval=${p.tf}`);
     if (!r.ok || p._gen !== gen) return;
@@ -204,8 +204,7 @@ export async function togglePredProphet() {
   _syncProphetButton(true);
 
   // Fetch fresh (nocache=1) for every unique TF across all open panels in parallel
-  // 1m excluded — ETS flatlines at 1-minute resolution
-  const tfs = [...new Set(App.panels.map(p => p.tf).filter(tf => tf !== "1m"))];
+  const tfs = [...new Set(App.panels.map(p => p.tf).filter(tf => tf !== "1s"))];
   const byTF = {};
   await Promise.all(tfs.map(async (tf) => {
     try {
