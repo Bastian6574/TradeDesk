@@ -23,6 +23,7 @@
 <link rel="stylesheet" href="widgets/Console/console.css">
 <link rel="stylesheet" href="widgets/Predictions/predictions.css">
 <link rel="stylesheet" href="widgets/FundingOI/funding.css">
+<link rel="stylesheet" href="widgets/Research/research.css">
 </head>
 <body>
 
@@ -280,6 +281,15 @@
       <button class="btn confirm" onclick="addTicker()">ADD</button>
     </div>
   </div>
+</div>
+
+<!-- RESEARCH SCREEN -->
+<div id="research"></div>
+
+<!-- TAB BAR -->
+<div id="tab-bar">
+  <button class="tab-btn active" data-tab="main"     onclick="switchTab('main')">▦ MAIN</button>
+  <button class="tab-btn"        data-tab="research" onclick="switchTab('research')">◈ RESEARCH</button>
 </div>
 
 <!-- ENTRY POINT — ES module, loads all widgets -->

@@ -20,7 +20,8 @@ try:
     _ets_ok = True
 except ImportError:
     _ets_ok = False
-import json, os, re, subprocess, time
+import json, os, re, subprocess, time, threading, tempfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests as _req
 from datetime import datetime, timezone
 
@@ -357,43 +358,68 @@ except Exception as e:
     print(f"  Sentiment engine unavailable: {e}")
     _sentiment = None
 
-DEFAULT_WATCHLIST = ["BTC","AAPL","NVDA","TSLA","MSFT","AMZN","META","GOOGL","SPY"]
+DEFAULT_WATCHLIST = ["BTC","ANET","MSTR","ORCL","PLTR"]
 STATE_FILE        = "state.json"
 PINE_DIR          = "pine_scripts"
 CRYPTO_TICKERS    = {"BTC","ETH","BNB","SOL","DOGE","ADA","XRP","AVAX","DOT","LINK"}
 VENV_PACKAGES     = os.environ.get("VENV_PACKAGES", "")
 
+_state_lock = threading.Lock()
+
 def load_state():
     defaults = {
-        "watchlist":      DEFAULT_WATCHLIST,
-        "averages":       {},
-        "active_ticker":  "BTC",
-        "active_monitor": 1,
-        "default_tf":     "30m",
-        "chart_zoom":     150,
-        "sidebar_width":  260,
+        "watchlist":       DEFAULT_WATCHLIST,
+        "averages":        {},
+        "active_ticker":   "BTC",
+        "active_monitor":  1,
+        "default_tf":      "30m",
+        "chart_zoom":      150,
+        "sidebar_width":   260,
         "update_interval": 1000,
-        "monitors":       {"1": "BTC", "2": "NVDA", "3": "SPY"}
+        "monitors":        {"1": {"charts": [{"ticker": "BTC", "tf": "30m", "utilityMode": "rsi", "widgetMode": "candles", "widgetSettings": {}}]}}
     }
-    if os.path.exists(STATE_FILE):
+    with _state_lock:
+        if not os.path.exists(STATE_FILE):
+            return defaults
         try:
             with open(STATE_FILE) as f:
-                raw = f.read().strip()
-            # Auto-heal common corruption: extra trailing }
-            while raw.endswith('}}') and not raw.endswith('}}}'):
-                raw = raw[:-1]
-            saved = json.loads(raw)
+                raw = f.read()
+            healed = False
+            for _ in range(20):
+                try:
+                    saved = json.loads(raw)
+                    break
+                except json.JSONDecodeError:
+                    trimmed = raw.rstrip()
+                    if trimmed.endswith('}'):
+                        raw = trimmed[:-1]
+                        healed = True
+                    else:
+                        return defaults
+            else:
+                return defaults
+            if healed:
+                _write_state_atomic(raw)
             for k, v in defaults.items():
                 if k not in saved:
                     saved[k] = v
             return saved
         except Exception:
-            pass
-    return defaults
+            return defaults
+
+def _write_state_atomic(content_or_dict):
+    dir_ = os.path.dirname(os.path.abspath(STATE_FILE))
+    with tempfile.NamedTemporaryFile("w", dir=dir_, delete=False, suffix=".tmp") as tf:
+        if isinstance(content_or_dict, dict):
+            json.dump(content_or_dict, tf, indent=2)
+        else:
+            tf.write(content_or_dict)
+        tmp_path = tf.name
+    os.replace(tmp_path, STATE_FILE)
 
 def save_state(state):
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2)
+    with _state_lock:
+        _write_state_atomic(state)
 
 def _ema_series(values, period):
     k = 2.0 / (period + 1)
@@ -730,12 +756,61 @@ def get_forecast(ticker):
     _cache_set(cache_key, result, 60)
     return jsonify(result)
 
+@app.route("/api/mini/batch")
+def mini_batch():
+    raw     = request.args.get("t", "")
+    tickers = [t.strip().upper() for t in raw.split(",") if t.strip()][:30]
+    results = {}
+    def _fetch(t):
+        d = fetch_chart_data(t, period="5d", interval="1d")
+        if d and len(d.get("candles", [])) >= 2:
+            prev  = d["candles"][-2]["c"]
+            last  = d["candles"][-1]["c"]
+            chg   = round((last - prev) / prev * 100, 2) if prev else 0
+            return t, {"last": last, "change_pct": chg}
+        return t, None
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        futs = {ex.submit(_fetch, t): t for t in tickers}
+        for f in as_completed(futs):
+            try:
+                t, d = f.result()
+                if d: results[t] = d
+            except Exception: pass
+    return jsonify(results)
+
 @app.route("/api/mini/<ticker>")
 def mini_chart(ticker):
-    data = fetch_chart_data(ticker.upper(), period="5d", interval="30m")
-    if data is None:
+    sym = resolve_ticker(ticker.upper())
+    # Daily candles → accurate prev-close for % change
+    daily = fetch_chart_data(ticker.upper(), period="5d", interval="1d")
+    if not daily or not daily.get("candles"):
         return jsonify({"error": "No data"}), 404
-    return jsonify(data)
+    dc = daily["candles"]
+    last       = dc[-1]["c"]
+    prev_close = dc[-2]["c"] if len(dc) >= 2 else dc[0]["c"]
+    change_pct = round((last - prev_close) / prev_close * 100, 2) if prev_close else 0
+    # Hourly candles → nice sparkline shape (more data points)
+    hourly = fetch_chart_data(ticker.upper(), period="5d", interval="1h")
+    candles = hourly["candles"] if hourly and hourly.get("candles") else dc
+    return jsonify({"ticker": ticker.upper(), "last": last,
+                    "change_pct": change_pct, "interval": "1h", "candles": candles})
+
+@app.route("/api/price/<ticker>")
+def live_price(ticker):
+    sym = resolve_ticker(ticker.upper())
+    cache_key = f"price:{sym}"
+    cached = _cache_get(cache_key)
+    if cached: return jsonify(cached)
+    try:
+        fi = yf.Ticker(sym).fast_info
+        last = float(fi.last_price or 0)
+        prev = float(fi.previous_close or 0)
+        chg  = round((last - prev) / prev * 100, 2) if prev else 0
+        result = {"last": last, "change_pct": chg}
+        _cache_set(cache_key, result, 8)
+        return jsonify(result)
+    except Exception as ex:
+        return jsonify({"error": str(ex)}), 500
 
 @app.route("/api/state", methods=["GET"])
 def get_state():

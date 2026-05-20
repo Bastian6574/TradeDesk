@@ -1,4 +1,6 @@
 import { App, loadState } from './state.js';
+import { initResearch } from '../widgets/Research/research.js';
+import './settings.js';
 import { loadMainChart, getMonitorPreset, restorePreset, updateMonitorTabs, drawMainChart, drawLiveChart } from '../widgets/MainChart/chart.js';
 import { loadPineTS, loadPineFileScripts } from '../widgets/MainChart/pine.js';
 import { drawUtility } from '../widgets/UtilityPanel/utility.js';
@@ -62,6 +64,7 @@ async function init() {
   wireModalBackdrops();
   loadPineTS();
   loadPineFileScripts();
+  initResearch();
 }
 
 init();

@@ -1,0 +1,203 @@
+{
+  "watchlist": [
+    "BTC",
+    "ANET",
+    "MSTR",
+    "ORCL",
+    "PLTR"
+  ],
+  "averages": {
+    "ANET": 138.71,
+    "MSTR": 159.06,
+    "ORCL": 182.85,
+    "PLTR": 142.33
+  },
+  "active_ticker": "BTC",
+  "active_monitor": 1,
+  "monitors": {
+    "1": {
+      "layoutRows": [
+        [
+          0,
+          1
+        ],
+        [
+          2,
+          3
+        ]
+      ],
+      "charts": [
+        {
+          "ticker": "BTC",
+          "tf": "1h",
+          "utilityMode": "macd",
+          "widgetMode": "candles",
+          "widgetSettings": {
+            "pineOpacity": 1,
+            "timerFontSize": 11,
+            "l2TapeFontSize": 8,
+            "utilityYZoom": 1.25
+          }
+        },
+        {
+          "ticker": "BTC",
+          "tf": "30m",
+          "utilityMode": "macd",
+          "widgetMode": "candles",
+          "widgetSettings": {
+            "pineOpacity": 1,
+            "timerFontSize": 11,
+            "l2TapeFontSize": 8,
+            "utilityYZoom": 2
+          }
+        },
+        {
+          "ticker": "BTC",
+          "tf": "30m",
+          "utilityMode": "rsi",
+          "widgetMode": "level2",
+          "widgetSettings": {
+            "pineOpacity": 1,
+            "timerFontSize": 11,
+            "l2TapeFontSize": 9
+          }
+        },
+        {
+          "ticker": "BTC",
+          "tf": "30m",
+          "utilityMode": "rsi",
+          "widgetMode": "console",
+          "widgetSettings": {
+            "pineOpacity": 1,
+            "timerFontSize": 11,
+            "l2TapeFontSize": 8
+          }
+        }
+      ]
+    },
+    "2": {
+      "charts": [
+        {
+          "tf": "30m",
+          "ticker": "ANET",
+          "utilityMode": "rsi",
+          "widgetMode": "candles",
+          "widgetSettings": {
+            "l2TapeFontSize": 8,
+            "pineOpacity": 1,
+            "timerFontSize": 11
+          }
+        },
+        {
+          "tf": "15m",
+          "ticker": "ANET",
+          "utilityMode": "rsi",
+          "widgetMode": "candles",
+          "widgetSettings": {
+            "l2TapeFontSize": 8,
+            "pineOpacity": 1,
+            "timerFontSize": 11
+          }
+        },
+        {
+          "tf": "5m",
+          "ticker": "ANET",
+          "utilityMode": "rsi",
+          "widgetMode": "candles",
+          "widgetSettings": {
+            "l2TapeFontSize": 8,
+            "pineOpacity": 1,
+            "timerFontSize": 11
+          }
+        },
+        {
+          "tf": "30m",
+          "ticker": "BTC",
+          "utilityMode": "rsi",
+          "widgetMode": "liquidation",
+          "widgetSettings": {
+            "l2TapeFontSize": 8,
+            "pineOpacity": 1,
+            "timerFontSize": 11
+          }
+        }
+      ],
+      "layoutRows": [
+        [
+          0,
+          1
+        ],
+        [
+          2,
+          3
+        ]
+      ]
+    },
+    "3": {
+      "layoutRows": [
+        [
+          0,
+          1
+        ],
+        [
+          2,
+          3
+        ]
+      ],
+      "charts": [
+        {
+          "ticker": "ANET",
+          "tf": "30m",
+          "utilityMode": "macd",
+          "widgetMode": "candles",
+          "widgetSettings": {
+            "pineOpacity": 1,
+            "timerFontSize": 11,
+            "l2TapeFontSize": 8
+          }
+        },
+        {
+          "ticker": "MSTR",
+          "tf": "30m",
+          "utilityMode": "macd",
+          "widgetMode": "candles",
+          "widgetSettings": {
+            "pineOpacity": 1,
+            "timerFontSize": 11,
+            "l2TapeFontSize": 8
+          }
+        },
+        {
+          "ticker": "ORCL",
+          "tf": "1m",
+          "utilityMode": "macd",
+          "widgetMode": "candles",
+          "widgetSettings": {
+            "pineOpacity": 1,
+            "timerFontSize": 11,
+            "l2TapeFontSize": 8
+          }
+        },
+        {
+          "ticker": "PLTR",
+          "tf": "30m",
+          "utilityMode": "macd",
+          "widgetMode": "candles",
+          "widgetSettings": {
+            "pineOpacity": 1,
+            "timerFontSize": 11,
+            "l2TapeFontSize": 8
+          }
+        }
+      ]
+    }
+  },
+  "default_tf": "30m",
+  "chart_zoom": 156,
+  "sidebar_width": 0,
+  "update_interval": 250,
+  "active_curve": "rsi",
+  "rsi_period": 14,
+  "utility_height": 100,
+  "right_panel_width": 200
+}}

@@ -22,10 +22,14 @@
 .watch-item { padding:8px 10px 6px; border-bottom:1px solid var(--border); cursor:pointer; transition:background 0.1s; position:relative; }
 .watch-item:hover { background:var(--bg3); }
 .watch-item.active { background:var(--bg3); border-left:2px solid var(--green); padding-left:8px; }
-.watch-top { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px; }
+.watch-top { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:2px; }
 .watch-symbol { font-size:12px; font-weight:600; color:var(--text); letter-spacing:1px; }
-.watch-price { font-size:11px; color:var(--text); }
-.watch-change { font-size:10px; margin-bottom:4px; }
+.watch-live-pct { font-size:14px; font-weight:700; letter-spacing:0.5px; color:var(--text3); transition:color 0.3s; }
+.watch-live-pct.pos { color:var(--green); }
+.watch-live-pct.neg { color:var(--red); }
+.watch-bottom-row { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px; }
+.watch-price { font-size:10px; color:var(--text2); }
+.watch-change { font-size:10px; }
 .watch-change.pos { color:var(--green); }
 .watch-change.neg { color:var(--red); }
 .mini-chart-wrap { height:40px; position:relative; }

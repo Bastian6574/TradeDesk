@@ -14,14 +14,21 @@ export function renderWatchlist() {
     item.id = "wi-" + ticker;
     item.innerHTML = `
       <button class="remove-btn" onclick="removeTicker('${ticker}',event)">×</button>
-      <div class="watch-top"><span class="watch-symbol">${ticker}</span><span class="watch-price" id="wp-${ticker}">…</span></div>
-      <div class="watch-change" id="wc-${ticker}">—</div>
+      <div class="watch-top">
+        <span class="watch-symbol">${ticker}</span>
+        <span class="watch-live-pct" id="wlp-${ticker}">—</span>
+      </div>
+      <div class="watch-bottom-row">
+        <span class="watch-price" id="wp-${ticker}">…</span>
+        <span class="watch-change" id="wc-${ticker}">—</span>
+      </div>
       <div class="mini-chart-wrap"><canvas id="mc-${ticker}" height="40"></canvas></div>
     `;
     item.addEventListener("click", () => _syncOn ? loadTickerAllPanels(ticker) : loadTicker(ticker));
     container.appendChild(item);
     loadMiniChart(ticker);
   });
+  startWatchlistFeed();
 }
 
 export async function loadMiniChart(ticker) {
@@ -166,6 +173,39 @@ export function initSidebarResize() {
     syncState();
     redrawPanels();
   });
+}
+
+// ── LIVE PRICE FEED ───────────────────────────────────────────────────────────
+let _liveFeedTimer = null;
+
+async function _updateLivePrices() {
+  for (const ticker of App.state.watchlist) {
+    try {
+      const r = await fetch(API + `/api/price/${ticker}`);
+      if (!r.ok) continue;
+      const d = await r.json();
+      if (d.error) continue;
+      const pctEl  = document.getElementById("wlp-" + ticker);
+      const priceEl = document.getElementById("wp-" + ticker);
+      if (!pctEl) continue;
+      const pos  = d.change_pct >= 0;
+      const sign = pos ? "+" : "";
+      pctEl.textContent = sign + d.change_pct.toFixed(2) + "%";
+      pctEl.className   = "watch-live-pct " + (pos ? "pos" : "neg");
+      if (priceEl) priceEl.textContent = fmt(d.last);
+    } catch (_e) {}
+  }
+}
+
+export function startWatchlistFeed() {
+  _updateLivePrices();
+  clearInterval(_liveFeedTimer);
+  _liveFeedTimer = setInterval(_updateLivePrices, 10_000);
+}
+
+export function stopWatchlistFeed() {
+  clearInterval(_liveFeedTimer);
+  _liveFeedTimer = null;
 }
 
 // Expose for inline HTML handlers
