@@ -1,4 +1,4 @@
-import { App, indicators, saveIndicators, API, getContextTicker, isCrypto } from '../../core/state.js';
+import { App, indicators, saveIndicators, API, getContextTicker, isCrypto, setContextOverride } from '../../core/state.js';
 import { N_FC, fmtVol } from '../../core/utils.js';
 import { PINE_SCRIPTS, pineActive } from '../MainChart/pine.js';
 import { loadForecast } from '../MainChart/chart.js';
@@ -32,14 +32,28 @@ export function updateRpContextRow() {
 }
 
 // ── SENTIMENT ─────────────────────────────────────────────────────────────────
+function _sentimentNA(label = "N/A") {
+  const na = { label, color: "text3", score: 0, breakdown: {}, last_update: null };
+  updateSentimentPanel({
+    tech: na,
+    fng:  { ...na, value: null, classification: "" },
+    news: { ...na, buy_count: 0, sell_count: 0, neutral_count: 0, noise_count: 0, total_count: 0, headlines: [] }
+  });
+}
+
 export async function fetchSentiment(ticker) {
   const t = ticker || getContextTicker();
   try {
-    const r = await fetch(API + `/api/sentiment/${encodeURIComponent(t)}`);
-    if (!r.ok) return;
-    const s = await r.json(); if (s.error) return;
+    let r = await fetch(API + `/api/sentiment/${encodeURIComponent(t)}`);
+    if (!r.ok) {
+      // New endpoint not available yet (server not restarted) — fall back to BTC engine
+      r = await fetch(API + `/api/sentiment`);
+    }
+    if (!r.ok) { _sentimentNA("OFFLINE"); return; }
+    const s = await r.json();
+    if (s.error) { _sentimentNA("ERROR"); return; }
     updateSentimentPanel(s);
-  } catch (e) {}
+  } catch (e) { _sentimentNA("OFFLINE"); }
 }
 
 function colorClass(c) { return c === "green" ? "green" : c === "red" ? "red" : c === "amber" ? "amber" : ""; }
@@ -161,7 +175,9 @@ export async function reloadArima(e) {
 
 window.rpRecalc = function() {
   const t = App.panels[App.activeIdx]?.ticker ?? "BTC";
-  updateRpContextRow();
+  setContextOverride(t);          // pins context for 2 min; timer keeps using t
+  const el = document.getElementById("rp-ctx-ticker");
+  if (el) el.textContent = t;
   fetchSentiment(t);
   fetchDetails(t);
   import('../FundingOI/funding.js').then(m => m.fetchFunding(t));

@@ -16,10 +16,12 @@ const TFS = [
 
 // ── START / STOP ──────────────────────────────────────────────────────────────
 export function startConsole(p) {
+  if (p._conTimer) { clearInterval(p._conTimer); p._conTimer = null; }
   _buildDOM(p);
   p._conActive    = true;
   p._conLive      = false;
-  p._conCooldowns = new Map();
+  p._conCooldowns = new Map(); // fresh cooldowns — signals fire immediately
+  p._scanCount    = 0;
   _emit(p, '#6a8099', 'SYS', `monitoring ${p.ticker} · scanning 15m 30m 1h 1d`);
   _runScan(p);
   p._conTimer = setInterval(() => _runScan(p), SCAN_MS);
@@ -212,33 +214,43 @@ async function _runScan(p) {
   const now    = Date.now();
   const sigs   = [];
 
-  _detectIceberg(ticker).forEach(s => sigs.push(s));
+  try { _detectIceberg(ticker).forEach(s => sigs.push(s)); } catch(_e) {}
 
   for (const cfg of TFS) {
     let candles;
     try { candles = await _fetchCandles(ticker, cfg); } catch(_e) { continue; }
     if (!candles?.length) continue;
-    [
-      ..._detectLargeCandle(candles, cfg),
-      ..._detectMacd(candles, cfg),
-      ..._detectRSI(candles, cfg),
-      ..._detectEngulf(candles, cfg),
-      ..._detectVolSpike(candles, cfg),
-      ..._detectEMA50Break(candles, cfg),
-      ..._detectGoldenCross(candles, cfg),
-      ..._detectBBSqueeze(candles, cfg),
-      ..._detectStoch(candles, cfg),
-      ..._detectMABounce(candles, cfg),
-    ].forEach(s => sigs.push(s));
+    try {
+      [
+        ..._detectLargeCandle(candles, cfg),
+        ..._detectMacd(candles, cfg),
+        ..._detectRSI(candles, cfg),
+        ..._detectEngulf(candles, cfg),
+        ..._detectVolSpike(candles, cfg),
+        ..._detectEMA50Break(candles, cfg),
+        ..._detectGoldenCross(candles, cfg),
+        ..._detectBBSqueeze(candles, cfg),
+        ..._detectStoch(candles, cfg),
+        ..._detectMABounce(candles, cfg),
+      ].forEach(s => sigs.push(s));
+    } catch(_e) {}
   }
 
+  let emitted = 0;
   sigs.forEach(sig => {
     const ck = `${ticker}_${sig.key}`;
     if ((p._conCooldowns.get(ck) || 0) > now) return;
     p._conCooldowns.set(ck, now + COOLDOWN);
     _emit(p, sig.color, sig.badge, `${ticker}  ${sig.detail}`, sig.weight, sig.direction);
     _autoControl(p, sig);
+    emitted++;
   });
+
+  // Periodic heartbeat every ~5 min so log shows Brain is alive even with no signals
+  p._scanCount = (p._scanCount || 0) + 1;
+  if (p._scanCount % 33 === 0) {
+    _emit(p, '#2a3340', 'SYS', `${ticker} · no new signals · ${new Date().toTimeString().slice(0,8)}`);
+  }
 
   const el = document.getElementById('con-status-' + p.idx);
   if (el) el.textContent = `scanned ${new Date().toTimeString().slice(0, 8)}`;

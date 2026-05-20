@@ -109,7 +109,21 @@ export function getMonitorTicker() {
   return (best && best[1] >= 2) ? best[0] : null;
 }
 
+let _ctxOverride = null;
+let _ctxOverrideExpiry = 0;
+
+export function setContextOverride(ticker) {
+  _ctxOverride = ticker;
+  _ctxOverrideExpiry = Date.now() + 120_000; // 2-min pin
+}
+
+export function clearContextOverride() {
+  _ctxOverride = null;
+}
+
 export function getContextTicker() {
+  if (_ctxOverride && Date.now() < _ctxOverrideExpiry) return _ctxOverride;
+  _ctxOverride = null;
   return getMonitorTicker() ?? App.panels[App.activeIdx]?.ticker ?? "BTC";
 }
 
