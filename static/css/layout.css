@@ -1,0 +1,25 @@
+/* ── TOP BAR ── */
+#topbar { height:var(--header); background:var(--bg2); border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 12px; gap:12px; flex-shrink:0; }
+.logo { font-size:14px; font-weight:600; color:var(--green); letter-spacing:2px; margin-right:8px; }
+.monitor-tabs { display:flex; gap:2px; }
+.monitor-tab { padding:4px 14px; background:var(--bg3); border:1px solid var(--border); color:var(--text2); cursor:pointer; font-family:var(--font); font-size:11px; transition:all 0.15s; letter-spacing:1px; }
+.monitor-tab:hover { border-color:var(--border2); color:var(--text); }
+.monitor-tab.active { border-color:var(--green); color:var(--green); }
+.sep { width:1px; height:24px; background:var(--border); margin:0 4px; }
+.topbar-right { margin-left:auto; display:flex; align-items:center; gap:10px; }
+#clock { color:var(--text3); font-size:11px; letter-spacing:1px; }
+#ticker-search { background:var(--bg3); border:1px solid var(--border); color:var(--text); padding:4px 10px; font-family:var(--font); font-size:11px; width:120px; letter-spacing:1px; outline:none; }
+#ticker-search:focus { border-color:var(--blue); }
+#ticker-search::placeholder { color:var(--text3); }
+#settings-btn { background:none; border:1px solid var(--border); color:var(--text3); cursor:pointer; font-family:var(--font); font-size:14px; padding:2px 8px; line-height:1; transition:all 0.15s; }
+#settings-btn:hover { border-color:var(--border2); color:var(--text2); }
+
+/* ── MAIN LAYOUT ── */
+#main { display:flex; flex:1; overflow:hidden; }
+#center-right { display:flex; flex:1; overflow:hidden; }
+
+/* ── CHARTS CONTAINER ── */
+#charts-container { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+#charts-container.layout-2h { flex-direction:row; }
+#charts-container.layout-2v { flex-direction:column; }
+#charts-container.layout-4  { flex-wrap:wrap; }

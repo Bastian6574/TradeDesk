@@ -14,6 +14,12 @@ try:
     _arima_ok = True
 except ImportError:
     _arima_ok = False
+
+try:
+    from statsmodels.tsa.holtwinters import ExponentialSmoothing as _ETS
+    _ets_ok = True
+except ImportError:
+    _ets_ok = False
 import json, os, re, subprocess, time
 import requests as _req
 from datetime import datetime, timezone
@@ -381,6 +387,120 @@ def save_state(state):
     with open(STATE_FILE, "w") as f:
         json.dump(state, f, indent=2)
 
+def _ema_series(values, period):
+    k = 2.0 / (period + 1)
+    ema = [float(values[0])]
+    for v in values[1:]:
+        ema.append(float(v) * k + ema[-1] * (1 - k))
+    return _np.array(ema)
+
+def _compute_rsi(closes, period=14):
+    d = _np.diff(closes.astype(float))
+    g = _np.where(d > 0, d, 0.0)
+    l = _np.where(d < 0, -d, 0.0)
+    ag = _np.mean(g[-period:])
+    al = _np.mean(l[-period:])
+    return 100.0 if al == 0 else 100.0 - 100.0 / (1.0 + ag / al)
+
+def _compute_macd(closes):
+    e12  = _ema_series(closes, 12)
+    e26  = _ema_series(closes, 26)
+    line = e12 - e26
+    sig  = _ema_series(line, 9)
+    return float(line[-1]), float(sig[-1]), float(line[-2]), float(sig[-2])
+
+def _heuristic_bias(closes, is_crypto, sentiment_data):
+    signals    = {}
+    bias_parts = {}  # name -> (bias_value, weight)
+
+    # RSI
+    rsi = _compute_rsi(closes)
+    if   rsi < 30: rb, rl = 0.40,  "OVERSOLD ▲"
+    elif rsi < 45: rb, rl = 0.20,  "SOFT ▲"
+    elif rsi < 55: rb, rl = 0.00,  "NEUTRAL"
+    elif rsi < 70: rb, rl = -0.20, "SOFT ▼"
+    else:          rb, rl = -0.40, "OVERBOUGHT ▼"
+    signals["RSI"]    = {"value": round(rsi, 1), "label": rl, "bias": rb}
+    bias_parts["RSI"] = (rb, 0.25)
+
+    # MACD (needs ≥ 35 candles)
+    if len(closes) >= 35:
+        m, s, mp, sp = _compute_macd(closes)
+        cross_up = m > s and mp <= sp
+        cross_dn = m < s and mp >= sp
+        if   cross_up: mb, ml = 0.35,  "CROSS ▲▲"
+        elif m > s:    mb, ml = 0.15,  "BULL ▲"
+        elif cross_dn: mb, ml = -0.35, "CROSS ▼▼"
+        else:          mb, ml = -0.15, "BEAR ▼"
+        signals["MACD"]    = {"value": round(m, 4), "signal_val": round(s, 4), "label": ml, "bias": mb}
+        bias_parts["MACD"] = (mb, 0.25)
+
+    # MA20 vs MA50 cross
+    if len(closes) >= 50:
+        ma20 = float(_np.mean(closes[-20:]))
+        ma50 = float(_np.mean(closes[-50:]))
+        diff  = (ma20 - ma50) / ma50
+        mab   = max(-0.25, min(0.25, diff * 8))
+        if   diff >  0.02: mal = "GOLDEN ▲"
+        elif diff >  0.00: mal = "ABOVE ▲"
+        elif diff > -0.02: mal = "BELOW ▼"
+        else:              mal = "DEATH ▼"
+        signals["MA CROSS"]    = {"ma20": round(ma20, 2), "ma50": round(ma50, 2), "label": mal, "bias": round(mab, 3)}
+        bias_parts["MA CROSS"] = (mab, 0.20)
+
+    if sentiment_data:
+        # Tech sentiment score
+        tech_score = float(sentiment_data.get("tech", {}).get("score", 0) or 0)
+        tb = max(-0.30, min(0.30, tech_score * 0.10))
+        if   tech_score >  1.5: tl = "STRONG BULL ▲"
+        elif tech_score >  0.5: tl = "BULL ▲"
+        elif tech_score > -0.5: tl = "NEUTRAL"
+        elif tech_score > -1.5: tl = "BEAR ▼"
+        else:                   tl = "STRONG BEAR ▼"
+        signals["TECH SENT"]    = {"value": round(tech_score, 2), "label": tl, "bias": round(tb, 3)}
+        bias_parts["TECH SENT"] = (tb, 0.15)
+
+        # News buy/sell ratio
+        bc  = int(sentiment_data.get("news", {}).get("buy_count",  0) or 0)
+        sc_ = int(sentiment_data.get("news", {}).get("sell_count", 0) or 0)
+        tot = bc + sc_
+        if tot > 0:
+            ratio = (bc - sc_) / tot
+            nb    = ratio * 0.20
+            if   ratio >  0.4: nl = f"BULL ▲ {bc}B/{sc_}S"
+            elif ratio >  0.1: nl = f"SOFT BULL ▲ {bc}B/{sc_}S"
+            elif ratio > -0.1: nl = f"NEUTRAL {bc}B/{sc_}S"
+            elif ratio > -0.4: nl = f"SOFT BEAR ▼ {bc}B/{sc_}S"
+            else:              nl = f"BEAR ▼ {bc}B/{sc_}S"
+        else:
+            nb, nl = 0.0, "NO DATA"
+        signals["NEWS"]    = {"label": nl, "bias": round(nb, 3)}
+        bias_parts["NEWS"] = (nb, 0.10)
+
+        # Fear & Greed (contrarian)
+        fng_val = sentiment_data.get("fng", {}).get("value")
+        if fng_val is not None:
+            fv = int(fng_val)
+            if   fv < 25: fb, fl = 0.15,  f"{fv} EXT FEAR ▲"
+            elif fv < 40: fb, fl = 0.08,  f"{fv} FEAR ▲"
+            elif fv < 60: fb, fl = 0.00,  f"{fv} NEUTRAL"
+            elif fv < 75: fb, fl = -0.08, f"{fv} GREED ▼"
+            else:         fb, fl = -0.15, f"{fv} EXT GREED ▼"
+            signals["F&G"]    = {"value": fv, "label": fl, "bias": fb}
+            bias_parts["F&G"] = (fb, 0.05)
+
+    total_w   = sum(w for _, w in bias_parts.values())
+    composite = sum(b * w for b, w in bias_parts.values()) / total_w if total_w else 0.0
+    composite = max(-1.0, min(1.0, composite))
+
+    if   composite >  0.30: bias_label = "BULLISH"
+    elif composite >  0.10: bias_label = "SOFT BULL"
+    elif composite > -0.10: bias_label = "NEUTRAL"
+    elif composite > -0.30: bias_label = "SOFT BEAR"
+    else:                   bias_label = "BEARISH"
+
+    return round(composite, 3), bias_label, signals
+
 def resolve_ticker(ticker):
     t = ticker.upper()
     return t + "-USD" if t in CRYPTO_TICKERS else t
@@ -563,8 +683,42 @@ def get_forecast(ticker):
         })
         prev_c = fc_c
 
-    result = {"ticker": t, "interval": interval,
-              "model": "ARIMA(2,1,2)" if _arima_ok else "linear", "forecast": forecast}
+    # Heuristic bias — same signals as Prophet
+    bias_score, bias_label, signals = 0.0, "NEUTRAL", {}
+    try:
+        df_d = yf.Ticker(resolve_ticker(t)).history(period="1mo", interval="1d")
+        if not df_d.empty:
+            daily_c  = df_d["Close"].values.astype(float)
+            sent_data = None
+            if _sentiment is not None:
+                try: sent_data = _sentiment.get()
+                except Exception: pass
+            bias_score, bias_label, signals = _heuristic_bias(daily_c, t in CRYPTO_TICKERS, sent_data)
+    except Exception:
+        pass
+    # Fixed total tilt: ~5% * bias_score over the full forecast window (TF-independent)
+    bps = bias_score * 0.05 / max(n, 1)
+    atr_pad = atr * 0.3
+    half_ci_base = [(f["ci_hi"] - f["ci_lo"]) / 2 for f in forecast]
+    forecast_biased = []
+    for i, f in enumerate(forecast):
+        mult   = (1 + bps) ** (i + 1)
+        fc_c_b = round(f["c"] * mult, 4)
+        hci    = half_ci_base[i]
+        forecast_biased.append({
+            "t": f["t"], "o": f["o"],
+            "h": round(max(f["o"], fc_c_b) + atr_pad, 4),
+            "l": round(min(f["o"], fc_c_b) - atr_pad, 4),
+            "c": fc_c_b,
+            "ci_lo": round(fc_c_b - hci, 4),
+            "ci_hi": round(fc_c_b + hci, 4),
+        })
+    result = {
+        "ticker": t, "interval": interval,
+        "model": "ARIMA(2,1,2)" if _arima_ok else "linear",
+        "forecast": forecast, "forecast_biased": forecast_biased,
+        "bias_score": bias_score, "bias_label": bias_label, "signals": signals,
+    }
     _cache_set(cache_key, result, 60)
     return jsonify(result)
 
@@ -640,6 +794,161 @@ ws.close()
         return jsonify({"ok": False, "error": result.stderr.decode()}), 500
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+_BINANCE_FUTURES = "https://fapi.binance.com/fapi/v1"
+
+_MAX_LEVERAGE = {
+    "BTCUSDT": 125, "ETHUSDT": 100, "BNBUSDT": 75,  "SOLUSDT": 75,
+    "XRPUSDT": 75,  "DOGEUSDT": 75, "ADAUSDT": 75,  "AVAXUSDT": 75,
+    "DOTUSDT": 75,  "LINKUSDT": 75, "LTCUSDT": 75,  "MATICUSDT": 75,
+    "NEARUSDT": 75, "ATOMUSDT": 75, "UNIUSDT": 75,  "AAVEUSDT": 75,
+}
+
+def _get_max_leverage(sym):
+    return _MAX_LEVERAGE.get(sym)
+
+@app.route("/api/funding/<ticker>")
+def get_funding(ticker):
+    sym = ticker.upper() + "USDT"
+    cache_key = ("funding", sym)
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return jsonify(cached)
+    try:
+        r1 = _req.get(f"{_BINANCE_FUTURES}/premiumIndex?symbol={sym}",   timeout=5)
+        r2 = _req.get(f"{_BINANCE_FUTURES}/openInterest?symbol={sym}",   timeout=5)
+        r3 = _req.get(f"{_BINANCE_FUTURES}/fundingRate?symbol={sym}&limit=10", timeout=5)
+        if not r1.ok or not r2.ok:
+            detail = r1.text[:200] if not r1.ok else r2.text[:200]
+            return jsonify({"error": f"No futures data for {sym}", "detail": detail}), 404
+        p_data  = r1.json()
+        oi_data = r2.json()
+        hist    = r3.json() if r3.ok and isinstance(r3.json(), list) else []
+        mark   = float(p_data.get("markPrice",       0) or 0)
+        rate   = float(p_data.get("lastFundingRate", 0) or 0)
+        nft    = int(p_data.get("nextFundingTime",   0) or 0)
+        oi_v   = float(oi_data.get("openInterest",   0) or 0)
+        result = {
+            "symbol":            sym,
+            "mark_price":        mark,
+            "last_funding_rate": rate * 100,
+            "next_funding_ts":   nft,
+            "oi":                oi_v,
+            "oi_usd":            oi_v * mark,
+            "max_leverage":      _get_max_leverage(sym),
+            "history": [
+                {"t": int(h["fundingTime"]), "rate": float(h["fundingRate"]) * 100}
+                for h in hist if "fundingRate" in h and "fundingTime" in h
+            ],
+        }
+        _cache_set(cache_key, result, 30)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/<path:path>")
+def static_files(path):
+    return no_cache(send_from_directory("static", path))
+
+_PROPHET_CFG = {
+    "1d":  {"period": "2y",  "seasonal": 7,  "n_fc": 14, "max_fit": 500},
+    "1h":  {"period": "3mo", "seasonal": 24, "n_fc": 24, "max_fit": 500},
+    "30m": {"period": "1mo", "seasonal": 48, "n_fc": 24, "max_fit": 500},
+    "15m": {"period": "10d", "seasonal": 26, "n_fc": 16, "max_fit": 400},
+    "5m":  {"period": "5d",  "seasonal": 12, "n_fc": 12, "max_fit": 300},
+}
+
+@app.route("/api/prophet/<ticker>")
+def get_prophet(ticker):
+    import warnings
+    t        = ticker.upper()
+    interval = request.args.get("interval", "1d")
+    cfg      = _PROPHET_CFG.get(interval, _PROPHET_CFG["1d"])
+    cache_key = ("prophet", t, interval)
+    if not request.args.get("nocache"):
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return jsonify(cached)
+    if not _ets_ok:
+        return jsonify({"error": "statsmodels not installed"}), 503
+    try:
+        is_crypto = t in CRYPTO_TICKERS
+        sym       = resolve_ticker(t)
+        n_fc      = cfg["n_fc"]
+
+        # Fetch candles for ETS fitting (interval-matched)
+        df_fit = yf.Ticker(sym).history(period=cfg["period"], interval=interval)
+        min_pts = (cfg["seasonal"] * 2) if cfg.get("seasonal") else 20
+        if df_fit.empty or len(df_fit) < min_pts:
+            return jsonify({"error": "Not enough data for this timeframe"}), 404
+        fit_closes = df_fit["Close"].values.astype(float)[-cfg["max_fit"]:]
+        last_close = float(fit_closes[-1])
+
+        # Always use daily candles for bias signals (more stable)
+        df_daily = yf.Ticker(sym).history(period="1mo", interval="1d")
+        daily_closes = df_daily["Close"].values.astype(float) if not df_daily.empty else fit_closes
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore")
+            if cfg.get("seasonal"):
+                model = _ETS(fit_closes, trend="add", seasonal="add",
+                             seasonal_periods=cfg["seasonal"], damped_trend=True,
+                             initialization_method="estimated")
+            else:
+                # No damping: undamped trend extrapolates the recent slope visibly
+                # (damped_trend=True causes the trend to decay to zero on short TFs)
+                model = _ETS(fit_closes, trend="add", seasonal=None,
+                             damped_trend=False, initialization_method="estimated")
+            fit       = model.fit(optimized=True, remove_bias=True)
+            fc_mean   = _np.asarray(fit.forecast(n_fc))
+            resid_std = float(_np.std(fit.resid, ddof=1))
+            # Floor: ETS over-fits intraday data → residuals near-zero → invisible CI.
+            # Use observed 1-step price volatility as the minimum, so CI scales
+            # naturally to each TF without hardcoding a % of price.
+            if len(fit_closes) >= 11:
+                step_vol = float(_np.std(_np.diff(fit_closes[-60:]), ddof=1))
+                resid_std = max(resid_std, step_vol)
+
+        sentiment_data = None
+        if _sentiment is not None:
+            try: sentiment_data = _sentiment.get()
+            except Exception: pass
+
+        bias_score, bias_label, signals = _heuristic_bias(daily_closes, is_crypto, sentiment_data)
+
+        # Fixed total tilt: ~5% * bias_score over the full forecast window (TF-independent)
+        bias_per_step = bias_score * 0.05 / max(n_fc, 1)
+
+        z = 1.645
+        forecast, forecast_biased = [], []
+        for i in range(n_fc):
+            yhat   = float(fc_mean[i])
+            spread = resid_std * (1 + i * 0.05)
+            forecast.append({
+                "i": i, "yhat": round(yhat, 4),
+                "yhat_lower": round(yhat - z * spread, 4),
+                "yhat_upper": round(yhat + z * spread, 4),
+            })
+            mult   = (1 + bias_per_step) ** (i + 1)
+            yhat_b = yhat * mult; spread_b = spread * abs(mult)
+            forecast_biased.append({
+                "i": i, "yhat": round(yhat_b, 4),
+                "yhat_lower": round(yhat_b - z * spread_b, 4),
+                "yhat_upper": round(yhat_b + z * spread_b, 4),
+            })
+
+        result = {
+            "ticker": t, "interval": interval, "last_close": last_close,
+            "model": "ETS + Heuristic", "n_fc": n_fc,
+            "bias_score": bias_score, "bias_label": bias_label,
+            "signals": signals,
+            "forecast": forecast,
+            "forecast_biased": forecast_biased,
+        }
+        _cache_set(cache_key, result, 3600)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/api/pine/scripts")
 def list_pine_scripts():

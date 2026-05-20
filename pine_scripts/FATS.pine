@@ -1,0 +1,53 @@
+//@version=5
+indicator("Fibonacci Auto Trend Scouter", "FATS", overlay=true)
+
+int sm_len = input.int(8,  "Short Pivot Depth",  minval=3)
+int md_len = input.int(21, "Long Pivot Depth",   minval=5)
+
+// ── Tracked pivot highs/lows ──────────────────────────────────────────────────
+float sph = ta.pivothigh(high, sm_len, sm_len)
+float spl = ta.pivotlow(low,   sm_len, sm_len)
+float mph = ta.pivothigh(high, md_len, md_len)
+float mpl = ta.pivotlow(low,   md_len, md_len)
+
+var float sm_hi = na
+var float sm_lo = na
+var float md_hi = na
+var float md_lo = na
+
+if not na(sph)
+    sm_hi := sph
+if not na(spl)
+    sm_lo := spl
+if not na(mph)
+    md_hi := mph
+if not na(mpl)
+    md_lo := mpl
+
+// ── Short-period Fibonacci levels ─────────────────────────────────────────────
+float sm_rng = sm_hi - sm_lo
+float sm_f382 = sm_lo + sm_rng * 0.382
+float sm_f500 = sm_lo + sm_rng * 0.500
+float sm_f618 = sm_lo + sm_rng * 0.618
+
+// ── Long-period Fibonacci levels ──────────────────────────────────────────────
+float md_rng = md_hi - md_lo
+float md_f236 = md_lo + md_rng * 0.236
+float md_f382 = md_lo + md_rng * 0.382
+float md_f618 = md_lo + md_rng * 0.618
+float md_f786 = md_lo + md_rng * 0.786
+
+// ── Short trend pivot levels ──────────────────────────────────────────────────
+plot(sm_hi,    "Short HH",    color=color.new(color.orange, 15), linewidth=2)
+plot(sm_f618,  "Short 0.618", color=color.new(color.orange, 50), linewidth=1)
+plot(sm_f500,  "Short 0.500", color=color.new(#b2b5be,     50), linewidth=1)
+plot(sm_f382,  "Short 0.382", color=color.new(color.blue,  50), linewidth=1)
+plot(sm_lo,    "Short LL",    color=color.new(color.blue,  15), linewidth=2)
+
+// ── Long trend pivot levels ───────────────────────────────────────────────────
+plot(md_hi,    "Long HH",     color=color.new(color.red,   15), linewidth=3)
+plot(md_f786,  "Long 0.786",  color=color.new(color.red,   55), linewidth=1)
+plot(md_f618,  "Long 0.618",  color=color.new(#fbc02d,     40), linewidth=1)
+plot(md_f382,  "Long 0.382",  color=color.new(color.green, 40), linewidth=1)
+plot(md_f236,  "Long 0.236",  color=color.new(color.green, 55), linewidth=1)
+plot(md_lo,    "Long LL",     color=color.new(color.green, 15), linewidth=3)

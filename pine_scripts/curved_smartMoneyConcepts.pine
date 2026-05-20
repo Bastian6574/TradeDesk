@@ -1,0 +1,54 @@
+//@version=5
+indicator("Curved Smart Money Concepts", overlay=true)
+
+int   trendLen  = 100
+float mult      = 3.0
+int   pivotPrd  = 20
+
+// Adaptive band calculation
+float adaptiveSize = ta.atr(trendLen)
+float lenSq        = math.pow(trendLen, 2)
+
+var float upperBand = 0.0
+var float lowerBand = 0.0
+var int   barsUp    = 0
+var int   barsDn    = 0
+
+float maxHigh = math.max(high, na(upperBand) ? close : upperBand)
+barsUp       := close > upperBand ? 0 : barsUp + 1
+upperBand    := maxHigh - adaptiveSize / lenSq * (barsUp + 1) * mult
+
+float minLow  = math.min(low, na(lowerBand) ? close : lowerBand)
+barsDn       := close < lowerBand ? 0 : barsDn + 1
+lowerBand    := minLow  + adaptiveSize / lenSq * (barsDn + 1) * mult
+
+// Structural pivots
+float Up = ta.highest(upperBand, pivotPrd)
+float Dn = ta.lowest(lowerBand,  pivotPrd)
+
+// Premium / Discount / Mid zones
+float premTop  = ta.wma(Up - (Up - Dn) * 0.10, 5)
+float premBot  = ta.wma(Up - (Up - Dn) * 0.25, 5)
+float discTop  = ta.wma(Dn + (Up - Dn) * 0.25, 5)
+float discBot  = ta.wma(Dn + (Up - Dn) * 0.10, 5)
+float midTop   = ta.wma(Up - (Up - Dn) * 0.45, 5)
+float midBot   = ta.wma(Dn + (Up - Dn) * 0.45, 5)
+
+// Structure direction
+var int pos = 0
+if Up > Up[1]
+    pos := pos <= 0 ? 1 : pos + 1
+else if Dn < Dn[1]
+    pos := pos >= 0 ? -1 : pos - 1
+
+bool bullish = pos > 0
+bool bearish = pos < 0
+
+plot(Up,      "Range High",   color.new(color.red,   0),  linewidth=2)
+plot(Dn,      "Range Low",    color.new(color.green,  0),  linewidth=2)
+plot(premTop, "Premium Top",  color.new(color.red,   50))
+plot(premBot, "Premium Bot",  color.new(color.red,   70))
+plot(discTop, "Discount Top", color.new(color.green, 70))
+plot(discBot, "Discount Bot", color.new(color.green, 50))
+plot(midTop,  "Mid Top",      color.new(color.blue,  60))
+plot(midBot,  "Mid Bot",      color.new(color.blue,  60))

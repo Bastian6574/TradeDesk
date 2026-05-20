@@ -1,0 +1,30 @@
+//@version=5
+indicator("Gann Box", overlay=true)
+
+// ─── Inputs ───────────────────────────────────────────────────────────────────
+lookback = input.int(200, title="Lookback")
+
+// ─── High / Low over lookback ─────────────────────────────────────────────────
+hi = ta.highest(high, lookback)
+lo = ta.lowest(low,  lookback)
+
+// ─── Fibonacci Levels ────────────────────────────────────────────────────────
+// 0%, 25%, 38.2%, 50%, 61.8%, 75%, 100%
+rng = hi - lo
+
+level0   = lo                        // 0%   bottom
+level25  = lo + rng * 0.25           // 25%
+level382 = lo + rng * 0.382          // 38.2%
+level50  = lo + rng * 0.50           // 50%
+level618 = lo + rng * 0.618          // 61.8%
+level75  = lo + rng * 0.75           // 75%
+level100 = hi                        // 100% top
+
+// ─── Plots ────────────────────────────────────────────────────────────────────
+plot(level100, title="100% (Top)",   color=color.new(#F44336, 0), linewidth=2)
+plot(level75,  title="75%",          color=color.new(#a5d6a7, 0), linewidth=1)
+plot(level618, title="61.8%",        color=color.new(#9598a1, 0), linewidth=1)
+plot(level50,  title="50% (Mid)",    color=color.new(#0097a7, 0), linewidth=2)
+plot(level382, title="38.2%",        color=color.new(#81C784, 0), linewidth=1)
+plot(level25,  title="25%",          color=color.new(#a5d6a7, 0), linewidth=1)
+plot(level0,   title="0% (Bottom)",  color=color.new(#F44336, 0), linewidth=2)

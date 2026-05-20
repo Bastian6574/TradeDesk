@@ -1,0 +1,14 @@
+/* ── PINE EDITOR MODAL ── */
+#pine-modal { position:fixed; inset:0; background:rgba(0,0,0,0.75); display:flex; align-items:center; justify-content:center; z-index:120; }
+#pine-modal.hidden { display:none; }
+.pine-box { background:var(--bg2); border:1px solid var(--border2); width:520px; display:flex; flex-direction:column; }
+.pine-head { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; border-bottom:1px solid var(--border); font-size:10px; color:var(--text2); letter-spacing:2px; }
+.pine-head button { background:none; border:none; color:var(--text3); cursor:pointer; font-size:18px; line-height:1; transition:color 0.15s; font-family:var(--font); }
+.pine-head button:hover { color:var(--red); }
+#pine-editor-ta { background:var(--bg3); border:none; border-bottom:1px solid var(--border); color:var(--green); font-family:var(--font); font-size:11px; padding:12px 14px; resize:none; outline:none; min-height:220px; line-height:1.7; width:100%; box-sizing:border-box; }
+.pine-foot { display:flex; align-items:center; gap:8px; padding:8px 14px; }
+.pine-foot-btn { padding:3px 10px; background:transparent; border:1px solid var(--border); color:var(--text2); cursor:pointer; font-family:var(--font); font-size:10px; letter-spacing:1px; transition:all 0.15s; }
+.pine-foot-btn:hover { border-color:var(--green); color:var(--green); }
+.pine-foot-btn.run { border-color:var(--green2); color:var(--green); }
+.pine-foot-btn.run:hover { background:var(--green2); color:#000; }
+#pine-err { flex:1; font-size:9px; color:var(--red); letter-spacing:0; }

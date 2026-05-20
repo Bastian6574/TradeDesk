@@ -1,0 +1,31 @@
+//@version=5
+indicator("Gann Square 144", overlay=true)
+
+// ─── Price Range ─────────────────────────────────────────────────────────────
+hi = ta.highest(high, 144)
+lo = ta.lowest(low,  144)
+rng = hi - lo
+
+// ─── Horizontal Gann Levels ───────────────────────────────────────────────────
+gannHi   = hi
+gann75   = hi * 0.75 + lo * 0.25
+gannMid  = (hi + lo) / 2.0
+gann25   = hi * 0.25 + lo * 0.75
+gannLo   = lo
+
+// ─── Diagonal Gann Lines (1×1 angle) ─────────────────────────────────────────
+// Rising diagonal: starts from lo, climbs one unit of range per 144 bars
+step = rng / 144.0
+pos  = bar_index % 144
+
+gannRising  = lo + step * pos
+gannFalling = hi - step * pos
+
+// ─── Plots ────────────────────────────────────────────────────────────────────
+plot(gannHi,      title="Gann High",         color=color.new(color.red,   0), linewidth=2)
+plot(gann75,      title="Gann 75%",          color=color.new(color.white, 50), linewidth=1)
+plot(gannMid,     title="Gann Mid",          color=color.new(color.blue,  0), linewidth=2)
+plot(gann25,      title="Gann 25%",          color=color.new(color.white, 50), linewidth=1)
+plot(gannLo,      title="Gann Low",          color=color.new(color.green, 0), linewidth=2)
+plot(gannRising,  title="Gann 1x1 Rising",   color=color.new(color.orange, 0), linewidth=1)
+plot(gannFalling, title="Gann 1x1 Falling",  color=color.new(color.orange, 0), linewidth=1)

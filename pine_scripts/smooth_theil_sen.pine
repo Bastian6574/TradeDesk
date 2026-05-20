@@ -1,0 +1,42 @@
+//@version=5
+indicator("Smooth Theil-Sen", overlay=true)
+
+int length = input.int(25, "Length", minval=2)
+int offset = input.int(0, "Offset", minval=0)
+float mult  = input.float(2.0, "Multiplier", step=0.125)
+
+// ── Pairwise median slope (Theil-Sen estimator) ───────────────────────────────
+float[] slopes = array.new<float>()
+for i = offset to length - 2 + offset
+    for j = i + 1 to length - 1 + offset
+        if i != j
+            array.push(slopes, (close[j] - close[i]) / (j - i))
+array.sort(slopes)
+int sn = array.size(slopes)
+float beta1 = sn > 0 ? array.get(slopes, math.floor(sn / 2)) : 0.0
+
+// ── Intercept: median of residuals ────────────────────────────────────────────
+float[] residuals = array.new<float>()
+for i = offset to length - 1 + offset
+    int j = i - offset
+    array.push(residuals, close[i] - beta1 * j)
+array.sort(residuals)
+int rn = array.size(residuals)
+float beta0 = rn > 0 ? array.get(residuals, math.floor(rn / 2)) : 0.0
+
+// ── Prediction at current bar ─────────────────────────────────────────────────
+float predicted = beta0 + beta1 * -offset
+
+// ── MAD deviation bands ───────────────────────────────────────────────────────
+float[] errors = array.new<float>()
+for i = offset to length - 1 + offset
+    int j = i - offset
+    array.push(errors, math.abs(close[i] - (beta0 + beta1 * j)))
+array.sort(errors)
+int en = array.size(errors)
+float dev = (en > 0 ? array.get(errors, math.floor(en / 2)) : 0.0) * mult
+
+// ── Plots ─────────────────────────────────────────────────────────────────────
+plot(predicted,       "Theil-Sen",   color=#ADADAD, linewidth=2)
+plot(predicted + dev, "Upper Band",  color=#BE3149, linewidth=1)
+plot(predicted - dev, "Lower Band",  color=#529686, linewidth=1)

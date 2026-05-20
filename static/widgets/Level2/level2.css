@@ -1,0 +1,58 @@
+/* ── LEVEL 2 / DEPTH + TAPE WIDGET ── */
+.l2-header  { padding:3px 10px; background:var(--bg2); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; font-size:9px; color:var(--text3); letter-spacing:1px; flex-shrink:0; height:22px; }
+.l2-spread  { color:var(--amber); font-size:10px; letter-spacing:1px; }
+.l2-mid     { color:var(--text2); font-size:11px; font-weight:600; letter-spacing:1px; }
+.l2-bbo     { margin-left:auto; display:flex; gap:10px; font-size:9px; }
+.l2-bbo-bid { color:var(--green); }
+.l2-bbo-ask { color:var(--red); }
+
+/* ── SETTINGS BUTTON ── */
+.l2-settings-btn { background:transparent; border:1px solid transparent; color:var(--text3); cursor:pointer; font-size:12px; padding:1px 4px; font-family:var(--font); line-height:1; transition:all 0.15s; margin-left:4px; flex-shrink:0; }
+.l2-settings-btn:hover  { color:var(--text2); border-color:var(--border); }
+.l2-settings-btn.active { color:var(--amber); border-color:var(--amber); }
+
+/* ── SETTINGS PANEL ── */
+.l2-settings-panel { background:var(--bg2); border-bottom:1px solid var(--border2); padding:4px 8px; display:none; flex-shrink:0; }
+.l2-settings-panel.open { display:block; }
+.l2-sp-row   { display:flex; align-items:center; gap:6px; padding:3px 0; font-size:8px; color:var(--text3); letter-spacing:1px; border-bottom:1px solid var(--border); }
+.l2-sp-row:last-child { border-bottom:none; }
+.l2-sp-lbl   { min-width:96px; flex-shrink:0; }
+.l2-sp-check { accent-color:var(--amber); cursor:pointer; width:12px; height:12px; flex-shrink:0; }
+.l2-sp-range { flex:1; height:2px; accent-color:var(--amber); cursor:pointer; margin:0; }
+.l2-sp-val   { font-size:8px; color:var(--amber); min-width:28px; text-align:right; letter-spacing:0.5px; }
+
+/* ── BODY SPLIT ── */
+.l2-body { flex:1; display:flex; overflow:hidden; min-height:0; }
+
+/* ── DEPTH CHART (left) ── */
+.l2-depth-pane { flex:1; min-width:0; position:relative; overflow:hidden; }
+.l2-canvas     { display:block; }
+
+/* ── TRADE TAPE (right) ── */
+.l2-tape-pane     { flex:0 0 210px; display:flex; flex-direction:column; border-left:1px solid var(--border); background:var(--bg); overflow:hidden; }
+
+/* BBO strip above columns */
+.l2-tape-bbo      { height:18px; display:flex; align-items:center; justify-content:space-between; padding:0 5px; background:var(--bg2); border-bottom:1px solid var(--border); flex-shrink:0; font-family:var(--font); font-size:8px; letter-spacing:0.5px; }
+.l2-tbbo-bid      { color:var(--green); }
+.l2-tbbo-ask      { color:var(--red); }
+.l2-tbbo-spr      { color:var(--amber); font-size:7px; letter-spacing:0.5px; }
+
+.l2-tape-hdr      { height:20px; display:flex; align-items:center; background:var(--bg2); border-bottom:1px solid var(--border); flex-shrink:0; }
+.l2-tape-hdr-buy  { flex:1; color:var(--green); font-size:9px; letter-spacing:1.5px; text-align:center; font-family:var(--font); }
+.l2-tape-hdr-sell { flex:1; color:var(--red);   font-size:9px; letter-spacing:1.5px; text-align:center; font-family:var(--font); }
+.l2-tape-cols     { flex:1; display:flex; overflow:hidden; min-height:0; }
+.l2-tape-divider  { width:1px; flex-shrink:0; background:var(--border); }
+.l2-tape-col      { flex:1; overflow:hidden; padding:2px 0 0; font-family:var(--font); font-size:8px; line-height:1.6; }
+
+/* ── TAPE ROWS ── */
+.l2-row       { display:flex; align-items:baseline; padding:0 3px; gap:3px; overflow:hidden; white-space:nowrap; }
+.l2-col-qty   { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.l2-col-price { flex-shrink:0; text-align:right; }
+.l2-cnt       { font-size:6px; color:var(--amber); opacity:0.85; margin-left:1px; }
+
+/* default column colors (overridden per-row when colorBySize is on) */
+.l2-tape-buy  { color:var(--green); }
+.l2-tape-sell { color:var(--red); }
+
+/* iceberg rows get a left accent bar */
+.l2-ice { border-left:2px solid currentColor; padding-left:1px; }

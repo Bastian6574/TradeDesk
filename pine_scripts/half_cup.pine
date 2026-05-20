@@ -1,0 +1,33 @@
+//@version=5
+indicator("Half Cup", overlay=true)
+
+// ─── Inputs ───────────────────────────────────────────────────────────────────
+left = input.int(20, title="Swing Length", minval=3)
+
+// ─── Pivot Detection ─────────────────────────────────────────────────────────
+ph = ta.pivothigh(left, left)
+pl = ta.pivotlow(left,  left)
+
+var float lastPH = na
+var float lastPL = na
+
+if not na(ph)
+    lastPH := ph
+if not na(pl)
+    lastPL := pl
+
+// ─── Cup Boundaries ───────────────────────────────────────────────────────────
+cupTop = lastPH
+cupBot = lastPL
+cupMid = (cupTop + cupBot) * 0.5
+
+// ─── Smoothed arc (EMA of hlc3 as the curved midline) ────────────────────────
+arcEma = ta.ema(hlc3, left * 2)
+
+arcColor = close > cupMid ? color.new(#089981, 0) : color.new(#f23645, 0)
+
+// ─── Plots ────────────────────────────────────────────────────────────────────
+plot(cupTop, title="Cup Top",    color=color.new(#089981, 0),  linewidth=2)
+plot(cupBot, title="Cup Bottom", color=color.new(#f23645, 0),  linewidth=2)
+plot(cupMid, title="Cup Mid",    color=color.new(color.white, 50), linewidth=1)
+plot(arcEma, title="Arc EMA",    color=arcColor,                linewidth=2)

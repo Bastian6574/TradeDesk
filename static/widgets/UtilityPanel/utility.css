@@ -1,0 +1,7 @@
+/* ── UTILITY PANEL ── */
+.utility-panel { flex-shrink:0; background:var(--bg); border-top:1px solid var(--border); display:flex; flex-direction:column; }
+.utility-header { display:flex; align-items:center; gap:8px; padding:3px 10px; background:var(--bg2); border-bottom:1px solid var(--border); font-size:10px; color:var(--text3); letter-spacing:1px; height:22px; flex-shrink:0; }
+.utility-select { background:var(--bg3); border:1px solid var(--border); color:var(--text2); font-family:var(--font); font-size:9px; letter-spacing:0; padding:1px 4px; cursor:pointer; outline:none; }
+.utility-select:focus { border-color:var(--blue); }
+.utility-canvas-wrap { flex:1; position:relative; padding:3px 10px 2px; overflow:hidden; }
+.pine-section-lbl { font-size:8px; letter-spacing:2px; color:var(--text3); text-transform:uppercase; padding:6px 2px 3px; border-top:1px solid var(--border); margin-top:2px; }

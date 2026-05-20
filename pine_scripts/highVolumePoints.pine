@@ -1,0 +1,36 @@
+//@version=5
+indicator("High Volume Points", overlay=true)
+
+// ─── Inputs ───────────────────────────────────────────────────────────────────
+leftBars  = input.int(15, title="Left Bars")
+rightBars = input.int(15, title="Right Bars")
+
+// ─── Pivot Detection ─────────────────────────────────────────────────────────
+ph = ta.pivothigh(leftBars, rightBars)
+pl = ta.pivotlow(leftBars,  rightBars)
+
+// ─── Volume Threshold ─────────────────────────────────────────────────────────
+avgVol   = ta.sma(volume, 300)
+volRatio = volume[rightBars] / math.max(avgVol, 1)
+
+highVolThresh = 1.5
+
+// ─── Persistent Levels ────────────────────────────────────────────────────────
+var float lastHighPH = na
+var float lastLowPL  = na
+
+if not na(ph) and volRatio > highVolThresh
+    lastHighPH := high[rightBars]
+
+if not na(pl) and volRatio > highVolThresh
+    lastLowPL := low[rightBars]
+
+// ─── Signal Values (na when no qualifying pivot this bar) ─────────────────────
+highVolPh = not na(ph) and volRatio > highVolThresh ? high[rightBars] : na
+highVolPl = not na(pl) and volRatio > highVolThresh ? low[rightBars]  : na
+
+// ─── Plots ────────────────────────────────────────────────────────────────────
+plot(lastHighPH, title="Last High Pivot Level", color=color.new(#fda05e, 0),  linewidth=2)
+plot(lastLowPL,  title="Last Low Pivot Level",  color=color.new(#2fd68e, 0),  linewidth=2)
+plot(highVolPh,  title="High Vol Pivot High",   color=color.new(#fda05e, 0),  linewidth=1, style=plot.style_circles)
+plot(highVolPl,  title="High Vol Pivot Low",    color=color.new(#2fd68e, 0),  linewidth=1, style=plot.style_circles)

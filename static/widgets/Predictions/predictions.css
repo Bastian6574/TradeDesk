@@ -1,0 +1,82 @@
+/* ── PREDICTIONS PANEL ── */
+#predictions-content { padding:6px 8px 8px; }
+
+.pred-gear-btn {
+  cursor:pointer; font-size:9px; opacity:0.45; margin-left:auto;
+  transition:opacity 0.15s;
+}
+.pred-gear-btn:hover { opacity:1; }
+
+.pred-heuristic-panel {
+  padding:6px 10px; background:var(--bg3);
+  border-bottom:1px solid var(--border);
+}
+.pred-heuristic-panel.hidden { display:none; }
+
+.pred-h-row {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:3px 0; font-size:8px; letter-spacing:1px; color:var(--text2);
+}
+.pred-h-lbl { color:var(--text3); }
+.pred-h-row input[type="checkbox"] { cursor:pointer; accent-color:var(--green); }
+
+.pred-btns { display:flex; flex-direction:column; gap:5px; }
+
+.pred-wrap { flex:1; position:relative; }
+
+.pred-btn {
+  width:100%; display:flex; align-items:center; gap:6px;
+  background:var(--bg3); border:1px solid var(--border);
+  color:var(--text3); cursor:pointer; font-family:var(--font);
+  font-size:9px; letter-spacing:1px; padding:6px 8px;
+  transition:all 0.15s; text-align:left;
+}
+.pred-btn:hover { border-color:var(--border2); color:var(--text2); }
+.pred-btn.active { border-color:var(--green); color:var(--text2); }
+.pred-btn.pred-loading { border-color:var(--amber); color:var(--amber); }
+
+.pred-dot {
+  width:6px; height:6px; border-radius:50%; flex-shrink:0;
+  background:var(--red);
+}
+.pred-btn.active .pred-dot {
+  background:var(--green);
+  box-shadow:0 0 0 0 rgba(0,212,126,0.5);
+  animation:pred-pulse 1.8s ease-out infinite;
+}
+.pred-btn.pred-loading .pred-dot { background:var(--amber); animation:none; }
+
+@keyframes pred-pulse {
+  0%   { box-shadow:0 0 0 0 rgba(0,212,126,0.5); }
+  70%  { box-shadow:0 0 0 5px rgba(0,212,126,0); }
+  100% { box-shadow:0 0 0 0 rgba(0,212,126,0); }
+}
+
+.pred-name { font-size:9px; letter-spacing:1px; flex-shrink:0; }
+
+.pred-label { margin-left:auto; font-size:8px; letter-spacing:1px; color:var(--text3); }
+.pred-btn.active    .pred-label { color:var(--green); }
+.pred-btn.pred-loading .pred-label { color:var(--amber); }
+
+/* ── PREDICTION HOVER POPUP ── */
+.pred-popup {
+  position:fixed; z-index:400; width:230px;
+  background:var(--bg2); border:1px solid var(--border2);
+  box-shadow:-2px 4px 16px rgba(0,0,0,0.7);
+  font-family:var(--font); font-size:9px; pointer-events:none;
+  display:none;
+}
+.pred-popup-title {
+  padding:5px 10px; font-size:8px; letter-spacing:2px;
+  color:var(--text3); background:var(--bg3); border-bottom:1px solid var(--border);
+}
+.pred-popup-row {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:4px 10px; border-bottom:1px solid var(--border); gap:6px;
+}
+.pred-popup-row:last-child { border-bottom:none; }
+.pred-popup-key { color:var(--text3); letter-spacing:1px; flex-shrink:0; }
+.pred-popup-val { color:var(--text2); letter-spacing:0.5px; }
+.pred-popup-up  { color:var(--green); }
+.pred-popup-dn  { color:var(--red); }
+.pred-popup-note { padding:8px 10px; color:var(--text3); font-size:8px; letter-spacing:1px; text-align:center; }

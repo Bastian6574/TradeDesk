@@ -1,0 +1,7 @@
+/* ── ORDER BLOCKS WIDGET ── */
+.ob-legend { display:flex; gap:12px; align-items:center; padding:4px 10px; background:var(--bg2); border-bottom:1px solid var(--border); font-size:9px; color:var(--text3); letter-spacing:1px; flex-shrink:0; }
+.ob-legend-item { display:flex; align-items:center; gap:4px; }
+.ob-legend-swatch { width:12px; height:8px; border:1px solid; }
+.ob-legend-swatch.bull { background:#00d47e22; border-color:#00d47e88; }
+.ob-legend-swatch.bear { background:#f03e3e22; border-color:#f03e3e88; }
+.ob-legend-swatch.mit  { background:#6a809922; border-color:#6a809966; }

@@ -1,0 +1,22 @@
+//@version=5
+indicator("Auto Fib Extension", overlay=true)
+
+int lb = input.int(55, "Lookback Bars", minval=10)
+
+float H = ta.highest(high, lb)
+float L = ta.lowest(low, lb)
+float rng = H - L
+
+// Fibonacci retracement levels (L → H)
+plot(L,              "0.000",  color=#787b86, linewidth=2)
+plot(L + rng*0.236,  "0.236",  color=#f44336, linewidth=1)
+plot(L + rng*0.382,  "0.382",  color=#81c784, linewidth=1)
+plot(L + rng*0.500,  "0.500",  color=#4caf50, linewidth=1)
+plot(L + rng*0.618,  "0.618",  color=#fbc02d, linewidth=1)
+plot(L + rng*0.786,  "0.786",  color=#64b5f6, linewidth=1)
+plot(H,              "1.000",  color=#787b86, linewidth=2)
+
+// Extension levels above the high
+plot(H + rng*0.272,  "1.272",  color=#81c784, linewidth=1)
+plot(H + rng*0.618,  "1.618",  color=#2962ff, linewidth=2)
+plot(H + rng*1.618,  "2.618",  color=#f44336, linewidth=1)

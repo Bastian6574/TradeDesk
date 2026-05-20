@@ -1,0 +1,17 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&display=swap');
+
+:root {
+  --bg:      #0a0c0f; --bg2:#0f1318; --bg3:#151a20;
+  --border:  #1e2530; --border2:#2a3340;
+  --text:    #c8d8e8; --text2:#6a8099; --text3:#3d5066;
+  --green:   #00d47e; --green2:#00a862;
+  --red:     #f03e3e; --amber:#f0a03e; --blue:#3e8ef0;
+  --ma20:    #f0c040; --ma50:#a060f0; --avg:#f05050;
+  --font:    'JetBrains Mono', monospace;
+  --sidebar: 260px; --header:44px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font-family:var(--font); font-size:12px; height:100vh; overflow:hidden; display:flex; flex-direction:column; }
+
+@keyframes spin  { to { transform:rotate(360deg); } }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.2} }

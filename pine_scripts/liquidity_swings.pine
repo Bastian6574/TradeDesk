@@ -1,0 +1,42 @@
+//@version=5
+indicator("Liquidity Swings", overlay=true)
+
+// ─── Inputs ───────────────────────────────────────────────────────────────────
+length = input.int(14, title="Pivot Lookback")
+
+// ─── Pivot Detection ─────────────────────────────────────────────────────────
+ph = ta.pivothigh(length, length)
+pl = ta.pivotlow(length,  length)
+
+// ─── State Tracking ───────────────────────────────────────────────────────────
+var float swingHigh   = na
+var float swingLow    = na
+var bool  highCrossed = false
+var bool  lowCrossed  = false
+
+if not na(ph)
+    swingHigh   := high[length]
+    highCrossed := false
+
+if not na(pl)
+    swingLow   := low[length]
+    lowCrossed := false
+
+if close > swingHigh
+    highCrossed := true
+
+if close < swingLow
+    lowCrossed := true
+
+// ─── Active Levels (go na once swept) ────────────────────────────────────────
+activHigh = highCrossed ? na : swingHigh
+activLow  = lowCrossed  ? na : swingLow
+
+// ─── Plots ────────────────────────────────────────────────────────────────────
+// Active (intact) levels — solid, full opacity
+plot(activHigh, title="Active Swing High", color=color.new(color.red,   0), linewidth=2)
+plot(activLow,  title="Active Swing Low",  color=color.new(color.teal,  0), linewidth=2)
+
+// Historical swing levels — faded
+plot(swingHigh, title="Swing High",        color=color.new(color.red,  70), linewidth=1)
+plot(swingLow,  title="Swing Low",         color=color.new(color.teal, 70), linewidth=1)

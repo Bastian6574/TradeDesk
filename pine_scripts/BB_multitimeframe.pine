@@ -1,0 +1,35 @@
+//@version=5
+indicator("Bollinger Bands MTF & Kalman", overlay=true)
+
+// LTF settings
+float ltfMult   = 2.0
+int   ltfLength = 20
+
+// HTF approximation — longer window on same data (replaces request.security)
+float htfMult   = 2.25
+int   htfLength = 60
+
+// Kalman filter (stateless approximation — compatible with PineTS)
+var float kEstimate  = na
+var float kErrorEst  = 1.0
+float kGain = kErrorEst / (kErrorEst + 2.0)
+if na(kEstimate)
+    kEstimate := close[1]
+kEstimate := kEstimate + kGain * (close - kEstimate)
+kErrorEst := (1.0 - kGain) * kErrorEst + 0.2
+
+ltfBasis = kEstimate
+float ltfDev = ltfMult * ta.stdev(close, ltfLength)
+ltfUpper = ltfBasis + ltfDev
+ltfLower = ltfBasis - ltfDev
+
+// HTF BB — EMA-smoothed over longer period
+htfBasis = ta.ema(ta.sma(close, htfLength), htfLength)
+htfUpper = htfBasis + htfMult * ta.stdev(close, htfLength)
+htfLower = htfBasis - htfMult * ta.stdev(close, htfLength)
+
+plot(htfUpper, "HTF Upper", color.white)
+plot(htfLower, "HTF Lower", color.white)
+plot(ltfUpper, "LTF Upper", color.red)
+plot(ltfBasis, "LTF Mid",   color.blue)
+plot(ltfLower, "LTF Lower", color.green)

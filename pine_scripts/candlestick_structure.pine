@@ -1,0 +1,73 @@
+//@version=5
+indicator("Candlestick Structure", shorttitle="CS Structure", overlay=true)
+
+// ─── Inputs ───────────────────────────────────────────────────────────────────
+minorDCLength = input.int(10, title="Minor Trend Length (Donchian)")
+majorSTFactor = input.float(4.0, title="SuperTrend Factor")
+majorSTLength = input.int(20, title="SuperTrend Length")
+
+// ─── Major Trend: SuperTrend ──────────────────────────────────────────────────
+[stLine, stDir] = ta.supertrend(majorSTFactor, majorSTLength)
+// stDir: -1 = bullish, 1 = bearish
+major_bull = stDir == -1
+major_bear = stDir == 1
+
+stColor = major_bull ? color.new(#089981, 0) : color.new(#f23645, 0)
+
+// ─── Minor Trend: Donchian Channel ───────────────────────────────────────────
+dcLen = minorDCLength > 0 ? minorDCLength : 1
+dcUpper = ta.highest(high, dcLen)
+dcLower = ta.lowest(low, dcLen)
+
+var int minor_dir = 0
+if high == dcUpper and minor_dir != 1
+    minor_dir := 1
+if low == dcLower and minor_dir != -1
+    minor_dir := -1
+
+minor_bull = minor_dir > 0
+minor_bear = minor_dir < 0
+
+// ─── Candle Geometry ─────────────────────────────────────────────────────────
+c_top    = math.max(open, close)
+c_bot    = math.min(open, close)
+hl_width = high - low
+bod_width = c_top - c_bot
+
+hwP = hl_width > 0 ? ((high - c_top) / hl_width) * 100 : 0.0
+lwP = hl_width > 0 ? ((c_bot - low)  / hl_width) * 100 : 0.0
+bP  = hl_width > 0 ? (bod_width      / hl_width) * 100 : 0.0
+
+// Doji: open == close (no math.round_to_mintick)
+doji = close == open
+
+rc = close < open
+gc = close > open
+
+// ─── Bullish Patterns ─────────────────────────────────────────────────────────
+hammer      = lwP > bP * 2 and bP < 50 and hwP < 2 and not doji and minor_bear and major_bull
+inv_hammer  = hwP > bP * 2 and bP < 50 and lwP < 2 and not doji and minor_bear and major_bull
+
+bull_engulf_raw = rc[1] and gc and (bod_width > bod_width[1] / 2) and (open < close[1]) and c_top > c_top[1] and not doji[1]
+bull_engulfing  = bull_engulf_raw and minor_bear and major_bull
+
+// ─── Bearish Patterns ─────────────────────────────────────────────────────────
+shooting_star = hwP > bP * 2 and bP < 50 and lwP < 2 and not doji and minor_bull and major_bear
+hanging_man   = lwP > bP * 2 and bP < 50 and hwP < 2 and not doji and minor_bull and major_bear
+
+bear_engulf_raw = gc[1] and rc and (bod_width > bod_width[1] / 2) and (open > close[1]) and c_bot < c_bot[1] and not doji[1]
+bear_engulfing  = bear_engulf_raw and minor_bull and major_bear
+
+// ─── Composite signals ────────────────────────────────────────────────────────
+bull_signal = hammer or inv_hammer or bull_engulfing
+bear_signal = shooting_star or hanging_man or bear_engulfing
+
+// ─── Plots ────────────────────────────────────────────────────────────────────
+// SuperTrend line
+plot(stLine, title="SuperTrend", color=stColor, linewidth=2)
+
+// Bullish signal at low
+plot(bull_signal ? low : na, title="Bull Signal", color=color.new(#089981, 0), linewidth=2, style=plot.style_circles)
+
+// Bearish signal at high
+plot(bear_signal ? high : na, title="Bear Signal", color=color.new(#f23645, 0), linewidth=2, style=plot.style_circles)

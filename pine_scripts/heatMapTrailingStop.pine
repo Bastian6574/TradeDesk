@@ -1,0 +1,63 @@
+//@version=5
+indicator("Heatmap Trailing Stop", overlay=true)
+
+// ─── Inputs ───────────────────────────────────────────────────────────────────
+stopATRlen = input.int(28,  title="Stop ATR Length",      minval=2)
+stopMult   = input.float(5.0, title="Stop Multiplier",    minval=0.1, step=0.1)
+
+// ─── Trailing Stop Math ───────────────────────────────────────────────────────
+atrTrail   = ta.ema(ta.tr, stopATRlen)
+stopOffset = stopMult * atrTrail
+
+bullStop = high - stopOffset
+bearStop = low  + stopOffset
+
+var float trendUp   = na
+var float trendDown = na
+var int   trendDir  = 1
+var float ex        = na
+
+trendUp   := close[1] > trendUp   ? math.max(bullStop, trendUp)  : bullStop
+trendDown := close[1] < trendDown ? math.min(bearStop, trendDown) : bearStop
+trendDir  := close > trendDown[1] ? 1 : close < trendUp[1] ? -1 : nz(trendDir[1], 1)
+
+bullFlip = trendDir ==  1 and trendDir[1] == -1
+bearFlip = trendDir == -1 and trendDir[1] ==  1
+
+trail = trendDir == 1 ? trendUp : trendDown
+
+ex := trendDir != trendDir[1] ? (trendDir == 1 ? high : low) : trendDir == 1 ? math.max(nz(ex[1]), high) : math.min(nz(ex[1]), low)
+
+// ─── Fibonacci Levels ────────────────────────────────────────────────────────
+fib618 = ex + (trail - ex) * 0.618
+fib786 = ex + (trail - ex) * 0.786
+fib886 = ex + (trail - ex) * 0.886
+
+// ─── Breakout Signals (current bar, no request.security) ─────────────────────
+bull    = close > open and close - open > (high - low) * 0.5
+bear    = close < open and open - close > (high - low) * 0.5
+momUp   = close > high[1] and close > high[2]
+momDn   = close < low[1]  and close < low[2]
+
+sigL = bull and momUp and trendDir ==  1
+sigS = bear and momDn and trendDir == -1
+
+// ─── Colors ───────────────────────────────────────────────────────────────────
+trailColor = trendDir == 1 ? color.new(color.green, 0) : color.new(color.red, 0)
+fib618Col  = trendDir == 1 ? color.new(color.green, 40) : color.new(color.red, 40)
+fib786Col  = trendDir == 1 ? color.new(color.green, 55) : color.new(color.red, 55)
+fib886Col  = trendDir == 1 ? color.new(color.green, 70) : color.new(color.red, 70)
+
+// ─── Plots ────────────────────────────────────────────────────────────────────
+TRAIL  = plot(trail,  title="Trailing Stop", color=trailColor, linewidth=2)
+FIB61  = plot(fib618, title="Fib 61.8",      color=fib618Col,  linewidth=1)
+FIB78  = plot(fib786, title="Fib 78.6",      color=fib786Col,  linewidth=1)
+FIB88  = plot(fib886, title="Fib 88.6",      color=fib886Col,  linewidth=1)
+
+// Flip signals plotted at trail level
+plot(bullFlip ? trail : na, title="Bull Flip", color=color.new(color.lime, 0),  linewidth=3, style=plot.style_circles)
+plot(bearFlip ? trail : na, title="Bear Flip", color=color.new(color.red,  0),  linewidth=3, style=plot.style_circles)
+
+// Entry signals at low/high
+plot(sigL ? low  : na, title="Long Signal",  color=color.new(color.lime, 0), linewidth=2, style=plot.style_circles)
+plot(sigS ? high : na, title="Short Signal", color=color.new(color.red,  0), linewidth=2, style=plot.style_circles)

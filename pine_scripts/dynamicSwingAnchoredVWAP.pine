@@ -1,0 +1,50 @@
+//@version=5
+indicator("Dynamic Swing Anchored VWAP", overlay=true)
+
+// ─── Inputs ───────────────────────────────────────────────────────────────────
+prd = input.int(50, title="Swing Period", minval=2)
+
+// ─── Swing Detection ─────────────────────────────────────────────────────────
+phBar = ta.highestbars(high, prd) == 0
+plBar = ta.lowestbars(low,  prd) == 0
+
+// ─── VWAP Anchored to Swings ──────────────────────────────────────────────────
+var float cumPV  = hlc3 * volume
+var float cumV   = volume
+var float cumPV2 = hlc3 * hlc3 * volume   // for squared deviation
+var float cumV2  = volume
+
+newSwing = phBar or plBar
+
+if newSwing
+    cumPV  := hlc3 * volume
+    cumV   := volume
+    cumPV2 := hlc3 * hlc3 * volume
+    cumV2  := volume
+else
+    cumPV  := cumPV  + hlc3 * volume
+    cumV   := cumV   + volume
+    cumPV2 := cumPV2 + hlc3 * hlc3 * volume
+    cumV2  := cumV2  + volume
+
+vwap = cumV > 0 ? cumPV / cumV : hlc3
+
+// Standard deviation band
+vwapSq   = cumV2 > 0 ? cumPV2 / cumV2 : hlc3 * hlc3
+variance = math.max(vwapSq - vwap * vwap, 0.0)
+stdDev   = math.sqrt(variance)
+
+upperBand = vwap + stdDev
+lowerBand = vwap - stdDev
+
+// ─── Direction ────────────────────────────────────────────────────────────────
+bullish = close > vwap
+
+vwapColor  = bullish ? color.new(#089981, 0)  : color.new(#f23645, 0)
+upperColor = color.new(#089981, 30)
+lowerColor = color.new(#f23645, 30)
+
+// ─── Plots ────────────────────────────────────────────────────────────────────
+plot(vwap,      title="VWAP",        color=vwapColor,  linewidth=2)
+plot(upperBand, title="Upper Band",  color=upperColor, linewidth=1)
+plot(lowerBand, title="Lower Band",  color=lowerColor, linewidth=1)

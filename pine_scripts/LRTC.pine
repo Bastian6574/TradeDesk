@@ -1,0 +1,111 @@
+//@version=4
+//code from linear regression used https://www.tradingview.com/script/CD7yUWRV-Linear-Regression-Trend-Channel/
+// by https://www.tradingview.com/u/midtownsk8rguy
+// permission granted by the author https://imgur.com/Pp8k7Q4
+// added color option, labels for high and low.
+
+// Learn alert : https://www.tradingview.com/script/V7OVP5LE-Lnear-Regression/
+// https://www.tradingview.com/scripts/linearregression/
+
+study("Linear Regression Trend Channel with Entries & Alerts", "LRTC 0.2", true)
+
+//###### FUNCTIONS ##################################//
+truncate(number, decimals) =>
+    factor = pow(10, decimals)
+    int(number * factor) / factor
+    
+nround(x) =>
+    n = round(x / syminfo.mintick) * syminfo.mintick
+
+chosenColor(c_)=> c_ == "aqua"    ? #00FFFFff :
+                  c_ == "blue"    ? #0040FFff :
+                  c_ == "fuchsia" ? #FF00FFff :
+                  c_ == "gray"    ? #808080ff :
+                  c_ == "green"   ? #008000ff :
+                  c_ == "lime"    ? #00FF00ff :
+                  c_ == "maroon"  ? #800000ff :
+                  c_ == "navy"    ? #000099ff :
+                  c_ == "olive"   ? #808000ff :
+                  c_ == "orange"  ? #FF8000ff :
+                  c_ == "purple"  ? #8000FFff :
+                  c_ == "red"     ? #ff0000ff :
+                  c_ == "silver"  ? #C0C0C0ff :
+                  c_ == "teal"    ? #008080ff :
+                  c_ == "white"   ? #FFFFFFff : #00000000
+                  
+//###### DRAW TREND CHANNEL#########################//
+period     = input(     40, "Period"       , input.integer, minval=3)
+deviations = input(    2.0, "Deviation(s)" , input.float  , minval=0.1, step=0.1)
+extendType = input("Right", "Extend Method", input.string , options=["Right","None"])=="None" ? extend.none : extend.right
+periodMinusOne = period-1
+Ex = 0.0, 
+Ey = 0.0, 
+Ex2 = 0.0, 
+Exy = 0.0, 
+for i=0 to periodMinusOne
+    closeI = nz(close[i]), 
+    Ex := Ex + i, 
+    Ey := Ey + closeI,
+    Ex2 := Ex2 + (i * i), 
+    Exy := Exy + (closeI * i)
+ExEx = Ex * Ex, slope = Ex2==ExEx ? 0.0 : (period * Exy - Ex * Ey) / (period * Ex2 - ExEx)
+linearRegression = (Ey - slope * Ex) / period
+intercept = linearRegression + bar_index * slope
+deviation = 0.0, for i=0 to periodMinusOne
+    deviation := deviation + pow(nz(close[i]) - (intercept - slope * (bar_index[i])), 2.0)
+deviation := deviations * sqrt(deviation / periodMinusOne)
+startingPointY = linearRegression + slope * periodMinusOne
+
+
+//####### DRAWING LINES SECTION ####
+var line upperChannelLine = na  , 
+var line medianChannelLine = na  , 
+var line lowerChannelLine = na
+line.delete(upperChannelLine[1]), 
+line.delete(medianChannelLine[1]), 
+line.delete(lowerChannelLine[1])
+
+// added color inputs
+upperLineColor = input(title="Upper Channel Color", defval="red", options=["aqua", "black", "blue", "fuchsia", "gray", "green", "lime", "maroon", "navy", "olive", "orange", "purple", "red", "silver", "teal", "white", "yellow"])
+middleLineColor = input(title="Middle Channel Color", defval="orange", options=["aqua", "black", "blue", "fuchsia", "gray", "green", "lime", "maroon", "navy", "olive", "orange", "purple", "red", "silver", "teal", "white", "yellow"])
+lowerChannelColor = input(title="Lower Channel Color", defval="green", options=["aqua", "black", "blue", "fuchsia", "gray", "green", "lime", "maroon", "navy", "olive", "orange", "purple", "red", "silver", "teal", "white", "yellow"])
+
+// draw channels
+upperChannelLine  := line.new(bar_index - period + 1, startingPointY + deviation, bar_index, linearRegression + deviation, xloc.bar_index, extendType, chosenColor(upperLineColor)    , line.style_solid , 2)
+medianChannelLine := line.new(bar_index - period + 1, startingPointY            , bar_index, linearRegression            , xloc.bar_index, extendType, chosenColor(middleLineColor), line.style_solid , 1)
+lowerChannelLine  := line.new(bar_index - period + 1, startingPointY - deviation, bar_index, linearRegression - deviation, xloc.bar_index, extendType, chosenColor(lowerChannelColor), line.style_solid , 2)
+
+
+//####### INFORMATION PANEL SECTION ####
+// Idea is developed from https://www.tradingview.com/script/gcp7bgN4-Linear-low-high/
+// by https://www.tradingview.com/u/RafaelZioni/
+disp_panels = input(true, title="Display info panels?")
+linear_label_off = input(-1, title="linear label offset", minval = -1)
+linear_label_size = input(size.normal, options=[size.tiny, size.small, size.normal, size.large, size.huge], title="linear label size")
+pos_x = timenow + round(change(time)*linear_label_off) 
+pos_y_upper = nround(linearRegression + deviation)
+candle_look_back = input(defval = 3, title="Look back", minval = 1, maxval = 5, step=1)
+pos_y_upper_previous = nround(linearRegression[candle_look_back] + deviation[candle_look_back])
+// pos_y_middle = nround(linearRegression) // doesn't need midde line
+pos_y_lower = truncate(nround(linearRegression - deviation), 5)
+pos_y_lower_previous = nround(linearRegression[candle_look_back] - deviation[candle_look_back])
+label_upper = "Current Sell Entry: " + tostring(pos_y_upper) + "\n Previous Sell Entry (using Look Back): " + tostring(pos_y_upper_previous)
+// label_upper = "Entry High: " + tostring(pos_y_upper)
+label_lower = "Current Buy Entry: " + tostring(pos_y_lower) + "\n Previous Buy Entry (using Look Back): " + tostring(pos_y_lower_previous)
+
+draw_upper_label = disp_panels ? label.new(x=pos_x, y=pos_y_upper, text=label_upper, xloc=xloc.bar_time, yloc=yloc.price, color=color.red, style=label.style_labeldown, textcolor=color.black, size=linear_label_size) : na
+draw_lower_label = disp_panels ? label.new(x=pos_x, y=pos_y_lower, text=label_lower, xloc=xloc.bar_time, yloc=yloc.price, color=color.blue, style=label.style_labelup, textcolor=color.black, size=linear_label_size) : na
+
+label.delete(draw_upper_label[1])
+label.delete(draw_lower_label[1])
+
+// to memorize entries 
+plot(pos_y_upper, title="Upper Entry Line", color=color.fuchsia, transp = 80)
+plot(pos_y_lower, title="Lower Entry Line", color=color.fuchsia, transp = 80)
+//####### ALERT PANEL SECTION ####
+ready_to_sell = crossover(close, pos_y_upper_previous)
+ready_to_buy = crossunder(close, pos_y_lower_previous)
+
+alertcondition(ready_to_sell, title='Sell Alert v0.2', message='Sell at {{plot("Upper Entry Line")}}')
+alertcondition(ready_to_buy, title='Buy Alert v0.2', message='Buy at {{plot("Lower Entry Line")}}')
+alertcondition(ready_to_buy or ready_to_sell, title='General Alert v0.2', message='Price is close to upper/lower channel.')
