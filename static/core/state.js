@@ -51,6 +51,21 @@ export async function loadState() {
   } catch (e) { App.state = { ...defaults }; }
 }
 
+// ── MONITOR TICKER CONTEXT ────────────────────────────────────────────────────
+const _CRYPTO_SET = new Set(["BTC","ETH","BNB","SOL","DOGE","ADA","XRP","AVAX","DOT","LINK","MATIC","LTC","BCH","XLM","UNI","AAVE","ATOM"]);
+export const isCrypto = t => _CRYPTO_SET.has((t || "").toUpperCase());
+
+export function getMonitorTicker() {
+  const counts = {};
+  for (const p of App.panels) counts[p.ticker] = (counts[p.ticker] || 0) + 1;
+  const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+  return (best && best[1] >= 2) ? best[0] : null;
+}
+
+export function getContextTicker() {
+  return getMonitorTicker() ?? App.panels[App.activeIdx]?.ticker ?? "BTC";
+}
+
 export async function syncState() {
   const { state } = App;
   await fetch(API + "/api/state", {

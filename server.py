@@ -595,9 +595,79 @@ def chart(ticker):
 
 @app.route("/api/sentiment")
 def get_sentiment():
-    if _sentiment is None:
-        return jsonify({"error": "Sentiment engine not available"}), 503
-    return jsonify(_sentiment.get())
+    return get_sentiment_ticker("BTC")
+
+@app.route("/api/sentiment/<ticker>")
+def get_sentiment_ticker(ticker):
+    t = ticker.upper()
+    if t in CRYPTO_TICKERS or t == "BTC":
+        if _sentiment is None:
+            return jsonify({"error": "Sentiment engine not available"}), 503
+        return jsonify(_sentiment.get())
+    cache_key = ("sentiment_stock", t)
+    cached = _cache_get(cache_key)
+    if cached:
+        return jsonify(cached)
+    try:
+        result = _stock_sentiment(t)
+        _cache_set(cache_key, result, 300)
+        return jsonify(result)
+    except Exception as ex:
+        return jsonify({"error": str(ex)}), 500
+
+def _stock_sentiment(ticker):
+    now_str = datetime.now().strftime("%H:%M")
+    # TECH: RSI + MACD across 1h and 1d
+    TFS = [("1h", "60d", 0.4), ("1d", "6mo", 0.6)]
+    score = 0.0; breakdown = {}
+    for tf, period, weight in TFS:
+        d = fetch_chart_data(ticker, period=period, interval=tf)
+        if not d or len(d.get("candles", [])) < 30:
+            continue
+        closes = [c["c"] for c in d["candles"]]
+        rsi_val = float(_compute_rsi(_np.array(closes)))
+        rsi_s   = (rsi_val - 50.0) / 50.0
+        e12 = _ema_series(closes, 12)
+        e26 = _ema_series(closes, 26)
+        macd_line = e12 - e26
+        macd_s = 1.0 if float(macd_line[-1]) > float(macd_line[-2]) else -1.0
+        tf_score = rsi_s * 0.5 + macd_s * 0.5
+        breakdown[tf] = round(float(tf_score), 2)
+        score += float(tf_score) * weight
+    label = "BULLISH" if score > 0.1 else "BEARISH" if score < -0.1 else "NEUTRAL"
+    color = "green"  if score > 0.1 else "red"    if score < -0.1 else "amber"
+    # NEWS: yfinance headlines with keyword scoring
+    bull_kw = {"beat","beats","strong","growth","rally","upgrade","buy","record","surge",
+               "gain","rises","profit","positive","high","top","outperform","raise","raised"}
+    bear_kw = {"miss","misses","weak","decline","downgrade","sell","fall","loss","cut",
+               "warn","warns","drop","drops","concern","below","short","lower","lowered"}
+    buy_c = sell_c = noise_c = 0
+    headlines = []
+    try:
+        news = yf.Ticker(ticker).news or []
+        for item in news[:10]:
+            title = item.get("title", "")
+            words = set(title.lower().split())
+            b = bool(words & bull_kw)
+            s = bool(words & bear_kw)
+            if b and not s:   signal = "buy";     buy_c  += 1
+            elif s and not b: signal = "sell";    sell_c += 1
+            else:             signal = "neutral"; noise_c += 1
+            headlines.append({"title": title, "signal": signal})
+    except Exception:
+        pass
+    total  = buy_c + sell_c + noise_c
+    n_lbl  = "BULLISH" if buy_c > sell_c else "BEARISH" if sell_c > buy_c else ("NEUTRAL" if total else "N/A")
+    n_col  = "green"   if buy_c > sell_c else "red"     if sell_c > buy_c else ("amber" if total else "text3")
+    return {
+        "tech": {"label": label, "score": round(score, 2), "breakdown": breakdown,
+                 "color": color, "last_update": now_str},
+        "fng":  {"label": "N/A", "value": None, "classification": "Crypto-only index",
+                 "color": "text3", "last_update": None},
+        "news": {"label": n_lbl, "buy_count": buy_c, "sell_count": sell_c,
+                 "neutral_count": 0, "noise_count": noise_c, "total_count": total,
+                 "color": n_col, "last_update": now_str if total else None, "headlines": headlines}
+    }
 
 def _crypto_details(ticker):
     sym = ticker + "USDT"

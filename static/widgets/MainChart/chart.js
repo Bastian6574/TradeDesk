@@ -1,4 +1,4 @@
-import { App, indicators, syncState, API, LAYOUT_COUNT } from '../../core/state.js';
+import { App, indicators, syncState, API, LAYOUT_COUNT, getContextTicker } from '../../core/state.js';
 import { fmt, fmtVol, LIVE_MAX, N_FC, TF_N_FC, TF_PERIOD, toBinanceSymbol, tfIntervalMs, candleTimeRemaining } from '../../core/utils.js';
 import { PINE_SCRIPTS, pineActive, applyActivePineOverlays, applyPineOverlayToPanel, loadPineTS } from './pine.js';
 import { drawUtility } from '../UtilityPanel/utility.js';
@@ -335,8 +335,9 @@ export function setActivePanel(idx) {
   const ai = document.getElementById("avg-input-" + idx);
   if (ai) ai.value = App.state.averages[p.ticker] || "";
   updateAvgLegend(p);
-  import('../InfoPanel/info.js').then(m => m.fetchDetails(p.ticker));
-  import('../FundingOI/funding.js').then(m => m.fetchFunding(p.ticker));
+  const ctx = getContextTicker();
+  import('../InfoPanel/info.js').then(m => { m.updateRpContextRow(); m.fetchDetails(ctx); });
+  import('../FundingOI/funding.js').then(m => m.fetchFunding(ctx));
 }
 
 // ── MONITOR MANAGEMENT ────────────────────────────────────────────────────────

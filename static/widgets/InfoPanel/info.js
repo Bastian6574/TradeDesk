@@ -1,4 +1,4 @@
-import { App, indicators, saveIndicators, API } from '../../core/state.js';
+import { App, indicators, saveIndicators, API, getContextTicker, isCrypto } from '../../core/state.js';
 import { N_FC, fmtVol } from '../../core/utils.js';
 import { PINE_SCRIPTS, pineActive } from '../MainChart/pine.js';
 import { loadForecast } from '../MainChart/chart.js';
@@ -24,10 +24,19 @@ export function initNewsTooltip() {
   widget.addEventListener("mouseleave", () => tooltip.classList.remove("visible"));
 }
 
+// ── CONTEXT ROW ───────────────────────────────────────────────────────────────
+export function updateRpContextRow() {
+  const t = getContextTicker();
+  const el = document.getElementById("rp-ctx-ticker");
+  if (el) el.textContent = t;
+}
+
 // ── SENTIMENT ─────────────────────────────────────────────────────────────────
-export async function fetchSentiment() {
+export async function fetchSentiment(ticker) {
+  const t = ticker || getContextTicker();
   try {
-    const r = await fetch(API + "/api/sentiment"); if (!r.ok) return;
+    const r = await fetch(API + `/api/sentiment/${encodeURIComponent(t)}`);
+    if (!r.ok) return;
     const s = await r.json(); if (s.error) return;
     updateSentimentPanel(s);
   } catch (e) {}
@@ -56,13 +65,13 @@ function updateSentimentPanel(s) {
 
 export function scheduleSentiment() {
   fetchSentiment();
-  setInterval(fetchSentiment, 60000);
+  setInterval(() => fetchSentiment(), 60000);
 }
 
 // ── DETAILS ───────────────────────────────────────────────────────────────────
 export async function fetchDetails(ticker) {
   try {
-    const t = ticker || App.panels[App.activeIdx]?.ticker || "BTC";
+    const t = ticker || getContextTicker();
     const r = await fetch(API + `/api/details/${t}`);
     if (!r.ok) return; const d = await r.json(); if (d.error) return;
     const buyEl = document.getElementById("det-buy-vol");
@@ -85,7 +94,7 @@ export async function fetchDetails(ticker) {
 
 export function scheduleDetails() {
   fetchDetails();
-  setInterval(() => fetchDetails(App.panels[App.activeIdx]?.ticker), 5000);
+  setInterval(() => { updateRpContextRow(); fetchDetails(getContextTicker()); }, 5000);
 }
 
 // ── INDICATORS UI ─────────────────────────────────────────────────────────────
@@ -149,6 +158,14 @@ export async function reloadArima(e) {
   _arimaReloading = false;
   document.querySelectorAll("#arima-reload").forEach(el => el.classList.remove("spinning"));
 }
+
+window.rpRecalc = function() {
+  const t = App.panels[App.activeIdx]?.ticker ?? "BTC";
+  updateRpContextRow();
+  fetchSentiment(t);
+  fetchDetails(t);
+  import('../FundingOI/funding.js').then(m => m.fetchFunding(t));
+};
 
 // Expose for inline HTML handlers
 window.setIndicator = setIndicator;

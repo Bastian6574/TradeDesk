@@ -1,4 +1,4 @@
-import { App, API } from '../../core/state.js';
+import { App, API, getContextTicker } from '../../core/state.js';
 import { fmt } from '../../core/utils.js';
 
 let _timer      = null;
@@ -34,7 +34,7 @@ export async function fetchFunding(ticker) {
 }
 
 function _fetchForActive() {
-  const t = App.panels[App.activeIdx]?.ticker;
+  const t = getContextTicker();
   if (t) fetchFunding(t);
 }
 

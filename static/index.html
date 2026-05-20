@@ -77,6 +77,13 @@
         <button class="layout-btn"        data-layout="4"  onclick="setLayout('4')"  title="4 Charts">4</button>
       </div>
 
+      <!-- Context row: which ticker the right panel is tracking -->
+      <div id="rp-context-row">
+        <span class="rp-ctx-label">CONTEXT</span>
+        <span id="rp-ctx-ticker">—</span>
+        <button id="rp-recalc-btn" onclick="window.rpRecalc()" title="Force right panel to use active chart's ticker">⟳ RECALC</button>
+      </div>
+
       <div id="right-panel-scroll">
 
         <!-- Sentiment -->

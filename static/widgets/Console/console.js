@@ -150,14 +150,15 @@ function _outlinePanel(idx, color) {
   _outlined.set(idx, { color, ts: Date.now(), clearTimer: t });
 }
 
-function _findChartPanel(excludeIdx) {
+function _findChartPanel(excludeIdx, ticker) {
   const cands = App.panels.filter(q =>
-    q.idx !== excludeIdx && (q.widgetMode || 'candles') === 'candles'
+    q.idx !== excludeIdx &&
+    (q.widgetMode || 'candles') === 'candles' &&
+    (!ticker || q.ticker === ticker)
   );
   if (!cands.length) return null;
   const free = cands.filter(q => !_outlined.has(q.idx));
   if (free.length) return free[0];
-  // All outlined — override the one outlined longest ago
   return cands.sort((a, b) => (_outlined.get(a.idx)?.ts || 0) - (_outlined.get(b.idx)?.ts || 0))[0];
 }
 
@@ -168,14 +169,14 @@ function _autoControl(conPanel, sig) {
 
   if (act.type === 'level2') {
     const l2 = App.panels.find(q =>
-      q.idx !== conPanel.idx && q.widgetMode === 'level2'
+      q.idx !== conPanel.idx && q.widgetMode === 'level2' && q.ticker === conPanel.ticker
     );
     if (l2) _outlinePanel(l2.idx, sig.color);
     return;
   }
 
   if (act.type === 'chart') {
-    const target = _findChartPanel(conPanel.idx);
+    const target = _findChartPanel(conPanel.idx, conPanel.ticker);
     if (!target) return;
     if (act.tf && target.tf !== act.tf) window.setPanelTF?.(target.idx, act.tf);
     if (act.utility) window.setUtilityMode?.(target.idx, act.utility);
