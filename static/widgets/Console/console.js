@@ -110,16 +110,20 @@ function _emit(p, color, badge, detail, weight, direction) {
     barHtml = `<div class="con-bar" style="width:${weight}%;background:${color}${alpha}"></div>`;
   }
 
-  // Weight badge
   const weightHtml = weight != null
     ? `<span class="con-weight" style="color:${color}80">${weight}%</span>` : '';
+
+  const dirHtml = direction === 'bull' ? `<span class="con-dir bull">BULL</span>`
+                : direction === 'bear' ? `<span class="con-dir bear">BEAR</span>`
+                : '';
 
   row.innerHTML =
     barHtml +
     `<span class="con-ts">${ts}</span>` +
     `<span class="con-badge" style="color:${color}">${_esc(badge)}</span>` +
     `<span class="con-detail">${_esc(detail)}</span>` +
-    weightHtml;
+    weightHtml +
+    dirHtml;
 
   log.appendChild(row);
   if (log.children.length > LOG_MAX) log.removeChild(log.firstChild);
