@@ -136,8 +136,9 @@ export function initPanelEvents(p) {
     }
   }, { passive: false });
 
-  // Left-click drag: chart area = 2D free pan; right y-axis strip (last 55px) = y-scale
-  let _dragging = false, _dm = "pan", _sx = 0, _sy = 0, _so = 0, _syMin = 0, _syMax = 0;
+  // Left-click drag: chart area = 2D free pan; right y-axis strip (last 55px) = y-scale; footer = x-scale
+  const _footer = document.getElementById("chart-footer-" + p.idx);
+  let _dragging = false, _dm = "pan", _sx = 0, _sy = 0, _so = 0, _sz = 0, _syMin = 0, _syMax = 0;
   wrap.addEventListener("mousedown", (e) => {
     if (e.button !== 0 || !p.mainChart) return;
     const r = wrap.getBoundingClientRect();
@@ -151,6 +152,17 @@ export function initPanelEvents(p) {
   });
   const _onMove = (e) => {
     if (!_dragging) return;
+    if (_dm === "xscale") {
+      // Exponential zoom: drag right = zoom out (more candles), drag left = zoom in
+      const nz = Math.max(3, Math.min(LIVE_MAX, Math.round(_sz * Math.pow(1.006, e.clientX - _sx))));
+      if (nz !== p.chartZoom) {
+        p.chartZoom = nz;
+        const zi = document.getElementById("zoom-indicator-" + p.idx);
+        if (zi) zi.textContent = "ZOOM " + nz;
+        _updateChartView(p);
+      }
+      return;
+    }
     if (_dm === "yscale") {
       // drag up → expand range (zoom out), drag down → compress range (zoom in)
       if (_syMax > _syMin) {
@@ -180,7 +192,7 @@ export function initPanelEvents(p) {
     if (!p._panLocked) { p._panLocked = true; _showResetBtn(p); }
     _updateChartView(p);
   };
-  const _onUp = () => { if (_dragging) { _dragging = false; wrap.style.cursor = ""; } };
+  const _onUp = () => { if (_dragging) { _dragging = false; wrap.style.cursor = ""; if (_footer) _footer.style.cursor = ""; } };
   wrap.addEventListener("mousemove", (e) => { if (!_dragging) { const r = wrap.getBoundingClientRect(); wrap.style.cursor = e.clientX > r.right - 55 ? "ns-resize" : ""; } });
   wrap.addEventListener("mouseleave", () => { if (!_dragging) wrap.style.cursor = ""; });
   // Double-click resets the full view
@@ -190,6 +202,19 @@ export function initPanelEvents(p) {
     if (p.tf === "1s") { if (p.liveCandles.length) drawLiveChart(p, p.liveCandles[p.liveCandles.length - 1].c); }
     else if (p.candleData) { drawMainChart(p, p.candleData); drawUtility(p, p.candleData._liveCandles); }
   });
+  // Footer timeline: drag left/right to scale X axis
+  if (_footer) {
+    _footer.addEventListener("mousedown", (e) => {
+      if (e.button !== 0 || e.target.tagName === "BUTTON" || e.target.tagName === "SELECT") return;
+      _dm = "xscale"; _dragging = true; _sx = e.clientX; _sz = p.chartZoom;
+      _footer.style.cursor = "ew-resize"; e.preventDefault();
+    });
+    _footer.addEventListener("mousemove", (e) => {
+      if (!_dragging)
+        _footer.style.cursor = (e.target.tagName === "BUTTON" || e.target.tagName === "SELECT") ? "" : "ew-resize";
+    });
+    _footer.addEventListener("mouseleave", () => { if (!_dragging) _footer.style.cursor = ""; });
+  }
   document.addEventListener("mousemove", _onMove);
   document.addEventListener("mouseup", _onUp);
 }
