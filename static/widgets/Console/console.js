@@ -64,8 +64,14 @@ const _GUIDE = [
   { badge: '◈ BB BREAKOUT [TF]',     color: '#00d47e', desc: 'Price broke above upper BB after a squeeze. Momentum expanding up.' },
   { badge: '◈ BB BREAKDOWN [TF]',    color: '#f03e3e', desc: 'Price broke below lower BB after a squeeze. Momentum expanding down.' },
   { badge: '⊕ STOCH CROSS [TF]',     color: '#a9e34b', desc: 'Stochastic %K crossed above %D while below 25 (oversold).' },
-  { badge: '⬢ MA50 BOUNCE [TF]',     color: '#00d47e', desc: 'Price dipped to EMA50 and reclaimed it. Buy-the-dip in an uptrend.' },
-  { badge: '⬢ MA200 BOUNCE [TF]',    color: '#ffd43b', desc: 'Price bounced off EMA200. Major long-term support reclaim.' },
+  { badge: '⬢ MA50 BOUNCE [TF]',       color: '#00d47e', desc: 'Price dipped to EMA50 and reclaimed it. Buy-the-dip in an uptrend.' },
+  { badge: '⬢ MA200 BOUNCE [TF]',      color: '#ffd43b', desc: 'Price bounced off EMA200. Major long-term support reclaim.' },
+  { badge: '◈ AVG WATCH [TICKER]',     color: '#ff9500', desc: 'Price within 1.5% of your set average — unclear direction. Watch for a breakout or breakdown.' },
+  { badge: '⚠ SELL WARN [TICKER]',     color: '#f03e3e', desc: 'Price above your average with bearish momentum. Probability-weighted warning of breaking down through your cost basis.' },
+  { badge: '⚠⚠ SELL WARN !! [TICKER]',color: '#ff3333', desc: 'Critical: price within 1% of your average with strong bearish momentum. Imminent break-down risk.' },
+  { badge: '⚠⚠⚠ SELL BREAK [TICKER]', color: '#f03e3e', desc: 'Price just broke BELOW your set average. Key support level lost.' },
+  { badge: '◆ AVG BREAK ↑ [TICKER]',   color: '#00d47e', desc: 'Price below your average with bullish momentum. Probability-weighted chance of reclaiming your cost basis.' },
+  { badge: '◆◆ AVG RECLAIM [TICKER]',  color: '#00d47e', desc: 'Price just reclaimed your set average. Key resistance level recovered.' },
 ];
 
 // ── DOM ───────────────────────────────────────────────────────────────────────
@@ -378,6 +384,9 @@ async function _runScan(p) {
   _updateSectionSummary(p.idx, 'st', _brainSummary(p, 'st'));
   _updateSectionSummary(p.idx, 'lt', _brainSummary(p, 'lt'));
 
+  // Scan all user averages for break signals
+  try { await _scanAverageBreaks(p); } catch (_e) {}
+
   // If live + short-term market is violent, re-scan with 1m/5m
   if (p._conLive && stState === 'VIOLENT') {
     for (const cfg of LIVE_TFS) {
@@ -661,6 +670,181 @@ function _detectMABounce(candles, cfg) {
         autoAction:{ type:'chart', tf:cfg.tf, utility:'macd' } });
   }
   return out;
+}
+
+// ── AVERAGE BREAK FORECAST ────────────────────────────────────────────────────
+const _AVG_CFGS = [
+  { tf: '1h', period: '1mo', interval: '1h', ttl: 300_000, section: 'st' },
+  { tf: '1d', period: '1y',  interval: '1d', ttl: 600_000, section: 'lt' },
+];
+
+async function _scanAverageBreaks(p) {
+  const avgs = App.state?.averages;
+  if (!avgs || !Object.keys(avgs).length) return;
+  for (const [ticker, avgPrice] of Object.entries(avgs)) {
+    if (!avgPrice || avgPrice <= 0) continue;
+    for (const cfg of _AVG_CFGS) {
+      try { await _analyzeAvgTF(p, ticker, Number(avgPrice), cfg); } catch (_e) {}
+    }
+  }
+}
+
+async function _analyzeAvgTF(p, ticker, avgPrice, cfg) {
+  const section = cfg.section;
+  const candles = await _fetchCandles(ticker, cfg);
+  if (!candles || candles.length < 30) return;
+
+  const closes = candles.map(c => c.c);
+  const n      = closes.length;
+  const price  = closes[n - 1];
+  const prev   = closes[n - 2];
+
+  const above          = price > avgPrice;
+  const distPct        = Math.abs(price - avgPrice) / avgPrice * 100;
+  const distAbs        = Math.abs(price - avgPrice);
+  const justCrossedDn  = prev > avgPrice && price <= avgPrice;
+  const justCrossedUp  = prev < avgPrice && price >= avgPrice;
+
+  // ── Indicators ──────────────────────────────────────────────────────────────
+  const rsiVal = _rsi(closes, 14);
+  const hist   = _macdHist(closes);
+  const ema20  = _emaArr(closes, 20);
+  const ema50  = closes.length >= 52 ? _emaArr(closes, 50) : null;
+
+  // ATR-14 for time estimation
+  const atr14 = candles.slice(-15).reduce((s, c, i, arr) => {
+    if (i === 0) return s + (c.h - c.l);
+    return s + Math.max(c.h - c.l, Math.abs(c.h - arr[i-1].c), Math.abs(c.l - arr[i-1].c));
+  }, 0) / 14;
+
+  // Velocity: avg price change per bar over last 10 bars
+  const velocity   = n >= 11 ? (closes[n-1] - closes[n-11]) / 10 : 0;
+  const movingToward = above ? velocity < 0 : velocity > 0;
+  const barsEst    = movingToward && Math.abs(velocity) > 0
+    ? Math.abs(distAbs / velocity) : null;
+  const mins       = cfg.tf === '1h' ? 60 : 1440;
+  const timeStr    = barsEst != null && barsEst < 120
+    ? (barsEst * mins < 60   ? `~${Math.round(barsEst * mins)}m`
+      : barsEst * mins < 1440 ? `~${Math.round(barsEst * mins / 60)}h`
+      :                         `~${Math.round(barsEst * mins / 1440)}d`)
+    : null;
+
+  // ── Momentum scoring ────────────────────────────────────────────────────────
+  let bearScore = 0, bullScore = 0;
+  const reasons = [];
+
+  if (rsiVal !== null) {
+    if      (rsiVal > 68) { bearScore += 30; reasons.push(`RSI ${rsiVal.toFixed(0)}`); }
+    else if (rsiVal > 55)   bearScore += 12;
+    else if (rsiVal < 32) { bullScore += 30; reasons.push(`RSI ${rsiVal.toFixed(0)}`); }
+    else if (rsiVal < 45)   bullScore += 12;
+  }
+
+  if (hist && hist.length >= 3) {
+    const hn = hist.length;
+    const [h2, h1, h0] = [hist[hn-3], hist[hn-2], hist[hn-1]];
+    if      (h0 < 0 && h0 < h1)  { bearScore += 25; reasons.push('MACD bear'); }
+    else if (h0 > 0 && h0 < h1)  { bearScore += 15; reasons.push('MACD fading'); }
+    if      (h0 > 0 && h0 > h1)  { bullScore += 25; reasons.push('MACD bull'); }
+    else if (h0 < 0 && h0 > h1)  { bullScore += 15; reasons.push('MACD turning'); }
+  }
+
+  if (ema20.length > 5) {
+    const slope = (ema20[n-1] - ema20[Math.max(0, n-6)]) / ema20[n-1] * 100;
+    if      (slope < -0.5) { bearScore += 15; reasons.push('EMA20↓'); }
+    else if (slope >  0.5) { bullScore += 15; reasons.push('EMA20↑'); }
+    if (ema50) {
+      if (price < ema20[n-1] && price < ema50[n-1]) bearScore += 10;
+      if (price > ema20[n-1] && price > ema50[n-1]) bullScore += 10;
+    }
+  }
+
+  // Declining highs (last 5 bars)
+  if (n >= 6) {
+    const highSlope = (candles[n-1].h - candles[n-6].h) / candles[n-1].h * 100;
+    if (highSlope < -1.5) { bearScore += 10; reasons.push('lower highs'); }
+    if (highSlope >  1.5) { bullScore += 10; reasons.push('higher highs'); }
+  }
+
+  const netScore = bullScore - bearScore;
+
+  // Probability: distance factor + momentum
+  const distFactor = Math.max(0, 1 - distPct / 15);
+  const prob = Math.min(93, Math.max(25, Math.round(distFactor * 55 + Math.abs(netScore) * 0.35)));
+
+  const now    = Date.now();
+  const avgStr = fmt(avgPrice);
+  const tDesc  = timeStr ? `  est ${timeStr}` : '';
+  const rsn    = reasons.slice(0, 3).join(' · ');
+  const prefix = 'avgbrk_';
+
+  // ── Just crossed DOWN ───────────────────────────────────────────────────────
+  if (justCrossedDn) {
+    const ck = `${prefix}broke_dn_${ticker}_${cfg.tf}`;
+    if ((p._conCooldowns.get(ck) || 0) <= now) {
+      p._conCooldowns.set(ck, now + COOLDOWN);
+      _emit(p, '#f03e3e', `⚠⚠⚠ SELL BREAK ${ticker}`,
+        `${cfg.tf.toUpperCase()} · broke BELOW avg@${avgStr}  ${rsn}`, 85, 'bear', section);
+    }
+    return;
+  }
+
+  // ── Just crossed UP ─────────────────────────────────────────────────────────
+  if (justCrossedUp) {
+    const ck = `${prefix}broke_up_${ticker}_${cfg.tf}`;
+    if ((p._conCooldowns.get(ck) || 0) <= now) {
+      p._conCooldowns.set(ck, now + COOLDOWN);
+      _emit(p, '#00d47e', `◆◆ AVG RECLAIM ${ticker}`,
+        `${cfg.tf.toUpperCase()} · reclaimed avg@${avgStr}  ${rsn}`, 80, 'bull', section);
+    }
+    return;
+  }
+
+  // Only emit directional warnings within threshold distance
+  const thresh = section === 'lt' ? 8 : 5;
+  if (distPct > thresh) return;
+
+  // ── Price ABOVE avg, bearish momentum ───────────────────────────────────────
+  if (above && netScore < -25) {
+    const crit   = distPct < 1.0;
+    const badge  = crit ? `⚠⚠ SELL WARN !! ${ticker}` : `⚠ SELL WARN ${ticker}`;
+    const color  = crit ? '#ff4444' : '#f03e3e';
+    const ck     = `${prefix}warn_dn_${ticker}_${cfg.tf}${crit ? '_c' : ''}`;
+    const cd     = crit ? Math.floor(COOLDOWN / 2.5) : COOLDOWN;
+    if ((p._conCooldowns.get(ck) || 0) > now) return;
+    p._conCooldowns.set(ck, now + cd);
+    _emit(p, color, badge,
+      `${cfg.tf.toUpperCase()} · avg@${avgStr}  ${distPct.toFixed(1)}% above${tDesc}  ${rsn}`,
+      prob, 'bear', section);
+    _emit(p, '#f03e3e80', '  ↳',
+      `${prob}% probability break ↓ avg${timeStr ? '  ' + timeStr : '  momentum-based'}`,
+      null, null, section);
+    return;
+  }
+
+  // ── Price BELOW avg, bullish momentum ───────────────────────────────────────
+  if (!above && netScore > 25) {
+    const ck = `${prefix}warn_up_${ticker}_${cfg.tf}`;
+    if ((p._conCooldowns.get(ck) || 0) > now) return;
+    p._conCooldowns.set(ck, now + COOLDOWN);
+    _emit(p, '#00d47e', `◆ AVG BREAK ↑ ${ticker}`,
+      `${cfg.tf.toUpperCase()} · avg@${avgStr}  ${distPct.toFixed(1)}% below${tDesc}  ${rsn}`,
+      prob, 'bull', section);
+    _emit(p, '#00d47e80', '  ↳',
+      `${prob}% probability reclaim avg${timeStr ? '  ' + timeStr : '  momentum-based'}`,
+      null, null, section);
+    return;
+  }
+
+  // ── Very close, unclear direction ───────────────────────────────────────────
+  if (distPct < 1.5) {
+    const ck = `${prefix}watch_${ticker}_${cfg.tf}`;
+    if ((p._conCooldowns.get(ck) || 0) > now) return;
+    p._conCooldowns.set(ck, now + Math.floor(COOLDOWN / 2));
+    _emit(p, '#ff9500', `◈ AVG WATCH ${ticker}`,
+      `${cfg.tf.toUpperCase()} · within 1.5% of avg@${avgStr}  direction unclear`,
+      null, null, section);
+  }
 }
 
 // ── SOCIAL SENTIMENT ON STATE TRANSITION ─────────────────────────────────────
