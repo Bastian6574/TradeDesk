@@ -23,7 +23,7 @@ except ImportError:
 import json, math, os, re, subprocess, time, threading, tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests as _req
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 
 # ── PINE SCRIPT TRANSLATOR ────────────────────────────────────────────────────
@@ -833,21 +833,53 @@ def get_forecast(ticker):
     return jsonify(result)
 
 _TF_PARAMS = {
-    # (period, interval)  — 1H/1D sliced client-side from the 1W payload
-    "1W": ("5d",  "30m"),   # ~80 half-hour candles; base for 1H/1D slicing too
-    "1M": ("1mo", "1d"),    # ~21 daily candles
-    "3M": ("3mo", "1d"),    # ~63 daily candles
+    "1W": ("5d", "30m"),   # ~80 half-hour candles; base for 1H/1D slicing too
 }
+_TF_DATE_PARAMS = {
+    # TFs where explicit start date is more reliable than yfinance period strings
+    "1M": (30,  "1d"),
+    "3M": (90,  "1d"),
+}
+
+def _fetch_spark(ticker, tf):
+    """Fetch sparkline data for a given TF, using date-range for 1M/3M."""
+    if tf in _TF_DATE_PARAMS:
+        days, interval = _TF_DATE_PARAMS[tf]
+        start = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        cache_key = (ticker.upper(), f"start:{start}", interval)
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return cached
+        try:
+            df = yf.Ticker(resolve_ticker(ticker)).history(start=start, interval=interval)
+            if df.empty:
+                return None
+            candles = []
+            for ts, row in df.iterrows():
+                c = float(row["Close"])
+                if math.isnan(c) or c <= 0:
+                    continue
+                candles.append({"t": int(ts.timestamp()*1000), "c": round(c, 4),
+                                 "v": int(row["Volume"]) if not math.isnan(float(row["Volume"])) else 0})
+            if len(candles) < 2:
+                return None
+            result = {"candles": candles, "last": candles[-1]["c"],
+                      "change_pct": round((candles[-1]["c"] - candles[0]["c"]) / candles[0]["c"] * 100, 2)}
+            _cache_set(cache_key, result, _CACHE_TTL.get(interval, 600))
+            return result
+        except Exception:
+            return None
+    period, interval = _TF_PARAMS.get(tf, ("5d", "30m"))
+    return fetch_chart_data(ticker, period=period, interval=interval)
 
 @app.route("/api/mini/batch")
 def mini_batch():
     raw     = request.args.get("t", "")
-    tf             = request.args.get("tf", "1W").upper()
-    period, interval = _TF_PARAMS.get(tf, ("5d", "1h"))
+    tf      = request.args.get("tf", "1W").upper()
     tickers = [t.strip().upper() for t in raw.split(",") if t.strip()][:60]
     results = {}
     def _fetch(t):
-        spark = fetch_chart_data(t, period=period, interval=interval)
+        spark = _fetch_spark(t, tf)
         if spark and not spark.get("error") and len(spark.get("candles", [])) >= 2:
             candles = spark["candles"]
             first_c = candles[0]["c"]
@@ -902,7 +934,7 @@ def live_price(ticker):
         prev = float(fi.previous_close or 0)
         chg  = round((last - prev) / prev * 100, 2) if prev else 0
         result = {"last": last, "change_pct": chg}
-        _cache_set(cache_key, result, 8)
+        _cache_set(cache_key, result, 1)
         return jsonify(result)
     except Exception as ex:
         return jsonify({"error": str(ex)}), 500

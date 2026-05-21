@@ -11,8 +11,7 @@ function _pineColorAlpha(color, alpha) {
 
 // ── PINE SCRIPT DEFINITIONS ───────────────────────────────────────────────────
 export const PINE_SCRIPTS = [
-  { id: "bb",         name: "BOLLINGER BANDS", overlay: true, script: `//@version=5\nindicator("BB",overlay=true)\nlength=20\nbasis=ta.sma(close,length)\ndev=2.0*ta.stdev(close,length)\nplot(basis+dev,"Upper")\nplot(basis,"Basis")\nplot(basis-dev,"Lower")` },
-  { id: "ema_cross",  name: "EMA 9/21",        overlay: true, script: `//@version=5\nindicator("EMA Cross",overlay=true)\nplot(ta.ema(close,9),"EMA9")\nplot(ta.ema(close,21),"EMA21")` },
+  // BB and EMA 9/21 moved to native IND popup (chart.js CHART_INDICATORS)
   { id: "stoch_rsi",  name: "STOCH RSI",       overlay: false, script: `//@version=5\nindicator("Stoch RSI",overlay=false)\nrsi1=ta.rsi(close,14)\nk=ta.sma(ta.stoch(rsi1,rsi1,rsi1,14),3)\nd=ta.sma(k,3)\nplot(k,"K")\nplot(d,"D")` },
   { id: "cci",        name: "CCI",             overlay: false, script: `//@version=5\nindicator("CCI",overlay=false)\nsrc=hlc3\nma=ta.sma(src,20)\nsd=ta.stdev(src,20)\nplot(sd>0?(src-ma)/(0.015*sd):0,"CCI")` },
   { id: "williams_r", name: "WILL %R",         overlay: false, script: `//@version=5\nindicator("Will %R",overlay=false)\nhh=ta.highest(high,14)\nll=ta.lowest(low,14)\nplot(hh-ll>0?(hh-close)/(hh-ll)*-100:0,"%R")` },
@@ -114,6 +113,7 @@ export function togglePineIndicator(id, active) {
 // ── OVERLAY APPLICATION ───────────────────────────────────────────────────────
 export async function applyPineOverlayToPanel(p, def) {
   if (!p.mainChart) return;
+  if (def.id === "file_dynamicswinganchoredvwap") { p.mainChart.update("none"); return; }
   const is1s = p.tf === "1s";
   const visCandles = is1s ? p.liveCandles.slice(-p.chartZoom) : p.candleData?._liveCandles;
   if (!visCandles || !visCandles.length) return;

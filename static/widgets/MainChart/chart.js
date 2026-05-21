@@ -106,6 +106,7 @@ export function buildPanelEl(p) {
         <option value="level2">LEVEL 2</option>
         <option value="console">BRAIN v1.0</option>
       </select>
+      <button class="pine-btn" id="ind-btn-${i}" onclick="toggleIndPopup()">IND</button>
       <button class="pine-btn" id="pine-btn-${i}" onclick="togglePinePopup()">PINE</button>
       <button class="split-btn" onclick="splitPanel(${i},'H')" title="Add panel beside">+H</button>
       <button class="split-btn" onclick="splitPanel(${i},'V')" title="Add panel below">+V</button>
@@ -136,7 +137,7 @@ export function initPanelEvents(p) {
   // Left-click drag: chart area = 2D free pan; right y-axis strip (last 55px) = y-scale
   let _dragging = false, _dm = "pan", _sx = 0, _sy = 0, _so = 0, _syMin = 0, _syMax = 0;
   wrap.addEventListener("mousedown", (e) => {
-    if (e.button !== 0 || p.tf === "1s" || !p.mainChart) return;
+    if (e.button !== 0 || !p.mainChart) return;
     const r = wrap.getBoundingClientRect();
     _dm = e.clientX > r.right - 55 ? "yscale" : "pan";
     _dragging = true;
@@ -159,7 +160,7 @@ export function initPanelEvents(p) {
       wrap.style.cursor = "grabbing";
       // X pan
       const ppc = wrap.clientWidth / Math.max(1, p.chartZoom);
-      const n = p.candleData?._liveCandles?.length || p.chartZoom;
+      const n = p.tf === "1s" ? p.liveCandles.length : (p.candleData?._liveCandles?.length || p.chartZoom);
       const maxOff = n - Math.min(p.chartZoom, n);
       const extras = Math.max(
         indicators.arima ? (p.forecastData.length > 0 ? p.forecastData.length : (TF_N_FC[p.tf] || N_FC)) : 0,
@@ -183,7 +184,9 @@ export function initPanelEvents(p) {
   // Double-click resets the full view
   wrap.addEventListener("dblclick", () => {
     p._xOffset = 0; p._yMin = null; p._yMax = null; p._panLocked = false;
-    if (p.candleData) { drawMainChart(p, p.candleData); drawUtility(p, p.candleData._liveCandles); }
+    _hideResetBtn(p);
+    if (p.tf === "1s") { if (p.liveCandles.length) drawLiveChart(p, p.liveCandles[p.liveCandles.length - 1].c); }
+    else if (p.candleData) { drawMainChart(p, p.candleData); drawUtility(p, p.candleData._liveCandles); }
   });
   document.addEventListener("mousemove", _onMove);
   document.addEventListener("mouseup", _onUp);
@@ -498,7 +501,9 @@ export async function loadMainChart(p) {
 
 // ── LIVE 1s STREAM ────────────────────────────────────────────────────────────
 async function startLiveStream(p) {
-  p.liveCandles = []; showLoading(p, true);
+  p.liveCandles = [];
+  p._xOffset = 0; p._panLocked = false; p._yMin = null; p._yMax = null;
+  showLoading(p, true);
   const myGen = p._gen;
   const binSym = toBinanceSymbol(p.ticker);
   try {
@@ -514,9 +519,10 @@ async function startLiveStream(p) {
       if (p._gen !== myGen) return;
       const k = JSON.parse(evt.data).k;
       const candle = { t: k.t, o: parseFloat(k.o), h: parseFloat(k.h), l: parseFloat(k.l), c: parseFloat(k.c), v: parseFloat(k.v), live: !k.x };
-      if (p.liveCandles.length && p.liveCandles[p.liveCandles.length - 1].live) p.liveCandles[p.liveCandles.length - 1] = candle;
-      else p.liveCandles.push(candle);
-      if (p.liveCandles.length > LIVE_MAX) p.liveCandles.shift();
+      const prevLive = p.liveCandles.length && p.liveCandles[p.liveCandles.length - 1].live;
+      if (prevLive) { p.liveCandles[p.liveCandles.length - 1] = candle; }
+      else { p.liveCandles.push(candle); if (p._panLocked) p._xOffset++; }
+      if (p.liveCandles.length > LIVE_MAX) { p.liveCandles.shift(); if (p._panLocked && p._xOffset > 0) p._xOffset--; }
       drawLiveChart(p, candle.c);
       drawUtility(p, p.liveCandles.slice(-p.chartZoom));
     };
@@ -541,9 +547,10 @@ async function startStockPoll(p) {
       }
       sHigh = Math.max(sHigh, price); sLow = Math.min(sLow, price);
       const candle = { t: now, o: sOpen, h: sHigh, l: sLow, c: price, live: true };
-      if (p.liveCandles.length && p.liveCandles[p.liveCandles.length - 1].live) p.liveCandles[p.liveCandles.length - 1] = candle;
-      else p.liveCandles.push(candle);
-      if (p.liveCandles.length > LIVE_MAX) p.liveCandles.shift();
+      const prevLiveS = p.liveCandles.length && p.liveCandles[p.liveCandles.length - 1].live;
+      if (prevLiveS) { p.liveCandles[p.liveCandles.length - 1] = candle; }
+      else { p.liveCandles.push(candle); if (p._panLocked) p._xOffset++; }
+      if (p.liveCandles.length > LIVE_MAX) { p.liveCandles.shift(); if (p._panLocked && p._xOffset > 0) p._xOffset--; }
       drawLiveChart(p, price); updateHeader(p, d);
     } catch (e) {}
   }, 1000);
@@ -574,29 +581,15 @@ async function _priceTick() {
     });
     for (const [ticker, ps] of Object.entries(byTicker)) {
       try {
-        const binSym = toBinanceSymbol(ticker);
-        let price;
-        if (binSym) {
-          const ac = new AbortController();
-          const tid = setTimeout(() => ac.abort(), 5000);
-          const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${binSym.toUpperCase()}`, { signal: ac.signal });
-          clearTimeout(tid);
-          const d = await r.json();
-          if (!d.price) continue;
-          price = parseFloat(d.price);
-        } else {
-          const ac = new AbortController();
-          const tid = setTimeout(() => ac.abort(), 8000);
-          const r = await fetch(API + `/api/chart/${ticker}?period=1d&interval=1m`, { signal: ac.signal });
-          clearTimeout(tid);
-          const d = await r.json();
-          if (d.error || !d.candles.length) continue;
-          price = d.last;
-        }
+        const ac = new AbortController();
+        const tid = setTimeout(() => ac.abort(), 5000);
+        const r = await fetch(API + `/api/price/${ticker}`, { signal: ac.signal });
+        clearTimeout(tid);
+        const d = await r.json();
+        if (d.error || !d.last) continue;
+        const price = d.last, pct = d.change_pct ?? 0;
         ps.forEach(p => {
           if (!p.candleData || !p.mainChart) return;
-          const c0 = p.candleData.candles?.[0]?.c;
-          const pct = c0 && c0 > 0 ? ((price - c0) / c0) * 100 : 0;
           updateLiveCandle(p, price, pct);
         });
       } catch (e) {}
@@ -709,7 +702,7 @@ export function drawMainChart(p, data) {
     type: "scatter",
     data: { labels: candles.map((_, i) => i), datasets: [{ data: candles.map((c, i) => ({ x: i, y: c.c })), pointRadius: 0, showLine: false }] },
     options: buildChartOptions(p, candles, minP, maxP, false),
-    plugins: [...buildCandlePlugins(candles, avg, false), buildForecastPlugin(p), buildProphetPlugin(p), buildVPVRPlugin(p, candles), buildPriceLinePlugin(p, candles)]
+    plugins: [...buildCandlePlugins(candles, avg, false), buildForecastPlugin(p), buildProphetPlugin(p), buildVPVRPlugin(p, candles), buildPriceLinePlugin(p, candles), buildDynamicSwingVWAPPlugin(p)]
   });
   PINE_SCRIPTS.filter(s => s.overlay && pineActive[s.id]).forEach(def => {
     const cached = p._pineOverlayCache[def.id];
@@ -718,14 +711,21 @@ export function drawMainChart(p, data) {
   if (p.mainChart.data.datasets.length > 1) p.mainChart.update("none");
   if (indicators.arima) loadForecast(p);
   applyActivePineOverlays(p);
+  _applyActiveInds(p);
 }
 
 export function drawLiveChart(p, lastPrice) {
-  const candles = p.liveCandles.slice(-p.chartZoom);
+  const n = p.liveCandles.length;
+  const xOff = Math.max(0, Math.round(p._xOffset || 0));
+  const zoom = Math.min(p.chartZoom, n);
+  const endIdx = Math.min(n, Math.max(zoom, n - xOff));
+  const startIdx = Math.max(0, endIdx - zoom);
+  const candles = p.liveCandles.slice(startIdx, endIdx);
   if (!candles.length) return;
   const avg = App.state.averages[p.ticker];
   const prices = candles.flatMap(c => [c.h, c.l]); if (avg) prices.push(avg);
-  const minP = Math.min(...prices) * 0.999, maxP = Math.max(...prices) * 1.001;
+  const autoMin = Math.min(...prices) * 0.999, autoMax = Math.max(...prices) * 1.001;
+  const minP = p._yMin ?? autoMin, maxP = p._yMax ?? autoMax;
   const canvas = makePanelCanvas(p);
   if (!canvas) return;
   updateStatusBar(p, candles[candles.length - 1]);
@@ -734,7 +734,7 @@ export function drawLiveChart(p, lastPrice) {
     type: "scatter",
     data: { labels: candles.map((_, i) => i), datasets: [{ data: candles.map((c, i) => ({ x: i, y: c.c })), pointRadius: 0, showLine: false }] },
     options: buildChartOptions(p, candles, minP, maxP, true),
-    plugins: [...buildCandlePlugins(candles, avg, true), buildVPVRPlugin(p, candles), buildPriceLinePlugin(p, candles)]
+    plugins: [...buildCandlePlugins(candles, avg, true), buildVPVRPlugin(p, candles), buildPriceLinePlugin(p, candles), buildDynamicSwingVWAPPlugin(p)]
   });
   PINE_SCRIPTS.filter(s => s.overlay && pineActive[s.id]).forEach(def => {
     const cached = p._pineOverlayCache[def.id];
@@ -742,7 +742,7 @@ export function drawLiveChart(p, lastPrice) {
   });
   if (p.mainChart.data.datasets.length > 1) p.mainChart.update("none");
   const lc = p.liveCandles.length;
-  if (lc !== (p._liveCount || 0)) { p._liveCount = lc; applyActivePineOverlays(p); }
+  if (lc !== (p._liveCount || 0)) { p._liveCount = lc; applyActivePineOverlays(p); _applyActiveInds(p); }
   drawUtility(p, candles);
 }
 
@@ -867,7 +867,7 @@ function buildPriceLinePlugin(p, candles) {
     id: "priceLine-" + p.idx,
     afterDraw(chart) {
       if (!candles || !candles.length) return;
-      const { ctx, scales: { x, y }, chartArea: { right } } = chart;
+      const { ctx, scales: { x, y }, chartArea: { left, right } } = chart;
       const last = candles[candles.length - 1];
       const price = last.c, bull = last.c >= last.o;
       const color = bull ? "#00d47e" : "#f03e3e";
@@ -876,7 +876,7 @@ function buildPriceLinePlugin(p, candles) {
       ctx.globalAlpha = 1;
       ctx.setLineDash([4, 4]);
       ctx.strokeStyle = color + "99"; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(x.getPixelForValue(candles.length - 1), yPos); ctx.lineTo(right, yPos); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(left, yPos); ctx.lineTo(right, yPos); ctx.stroke();
       ctx.setLineDash([]);
       const cW = chart.width, cH = chart.height;
       const labelW = Math.max(42, cW - right - 4), labelH = 16, labelX = right + 2;
@@ -907,6 +907,173 @@ function buildPriceLinePlugin(p, candles) {
       ctx.restore();
     }
   };
+}
+
+// ── DYNAMIC SWING ANCHORED VWAP PLUGIN ───────────────────────────────────────
+const _dsvwapCache = new WeakMap();
+
+function _computeDSVWAP(candles, leftLen = 10, rightLen = 10) {
+  const n = candles.length;
+  const pivots = [];
+  for (let i = leftLen; i < n - rightLen; i++) {
+    const hi = candles[i].h, lo = candles[i].l;
+    let isPH = true, isPL = true;
+    for (let j = i - leftLen; j <= i + rightLen; j++) {
+      if (j === i) continue;
+      if (candles[j].h >= hi) isPH = false;
+      if (candles[j].l <= lo) isPL = false;
+    }
+    if (isPH) pivots.push({ idx: i, type: "H", price: hi });
+    if (isPL) pivots.push({ idx: i, type: "L", price: lo });
+  }
+  pivots.sort((a, b) => a.idx - b.idx);
+
+  let lastH = null, lastL = null;
+  const swings = [];
+  for (const pv of pivots) {
+    if (pv.type === "H") {
+      pv.label = (lastH === null || pv.price > lastH) ? "HH" : "LH";
+      lastH = pv.price;
+    } else {
+      pv.label = (lastL === null || pv.price > lastL) ? "HL" : "LL";
+      lastL = pv.price;
+    }
+    swings.push(pv);
+  }
+
+  const segments = [];
+  for (let s = 0; s < swings.length; s++) {
+    const sw = swings[s];
+    const endIdx = s + 1 < swings.length ? swings[s + 1].idx : n - 1;
+    let cumPV = 0, cumV = 0;
+    const pts = [];
+    for (let i = sw.idx; i <= endIdx && i < n; i++) {
+      const c = candles[i];
+      const hlc3 = (c.h + c.l + c.c) / 3;
+      const vol = c.v || 1;
+      cumPV += hlc3 * vol; cumV += vol;
+      pts.push({ idx: i, y: cumPV / cumV });
+    }
+    if (pts.length >= 2) segments.push({ ...sw, color: sw.type === "H" ? "#089981" : "#f23645", pts });
+  }
+  return { swings, segments };
+}
+
+function buildDynamicSwingVWAPPlugin(p) {
+  return {
+    id: "dsvwap-" + p.idx,
+    afterDraw(chart) {
+      if (!indActive["ind_dsvwap"] && !pineActive["file_dynamicswinganchoredvwap"]) return;
+      const candles = p.tf === "1s" ? p.liveCandles : p.candleData?._liveCandles;
+      if (!candles || candles.length < 25) return;
+
+      const cacheKey = candles.length + ":" + (candles[candles.length - 1]?.t || 0);
+      let cached = _dsvwapCache.get(chart);
+      if (!cached || cached.key !== cacheKey) {
+        cached = { key: cacheKey, ..._computeDSVWAP(candles) };
+        _dsvwapCache.set(chart, cached);
+      }
+      const { swings, segments } = cached;
+      const { ctx, scales: { x, y }, chartArea } = chart;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, chartArea.bottom - chartArea.top);
+      ctx.clip();
+
+      for (const seg of segments) {
+        ctx.beginPath();
+        ctx.strokeStyle = seg.color + "cc";
+        ctx.lineWidth = 1.5;
+        let started = false;
+        for (const pt of seg.pts) {
+          const px = x.getPixelForValue(pt.idx), py = y.getPixelForValue(pt.y);
+          if (!started) { ctx.moveTo(px, py); started = true; } else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+
+      ctx.font = "bold 9px 'JetBrains Mono', monospace";
+      ctx.textAlign = "center";
+      for (const sw of swings) {
+        const px = x.getPixelForValue(sw.idx);
+        const isH = sw.type === "H";
+        const dotY = y.getPixelForValue(sw.price);
+        const lblY = dotY + (isH ? -10 : 10);
+        ctx.fillStyle = sw.type === "H" ? "#089981" : "#f23645";
+        ctx.beginPath(); ctx.arc(px, dotY, 2.5, 0, Math.PI * 2); ctx.fill();
+        ctx.textBaseline = isH ? "bottom" : "top";
+        ctx.fillText(sw.label, px, lblY);
+      }
+      ctx.restore();
+    }
+  };
+}
+
+// ── NATIVE CHART INDICATORS ───────────────────────────────────────────────────
+const CHART_INDICATORS = [
+  { id: "ind_dsvwap", name: "SWING ANCHORED VWAP", desc: "Dynamic swing-anchored VWAP" },
+  { id: "ind_bb",     name: "BOLLINGER BANDS",      desc: "SMA 20  ±2σ" },
+  { id: "ind_ema",    name: "EMA 9 / 21",           desc: "Exponential moving averages" },
+];
+const indActive = (() => { try { return JSON.parse(localStorage.getItem("td_ind_active") || "{}"); } catch { return {}; } })();
+function _saveIndActive() { localStorage.setItem("td_ind_active", JSON.stringify(indActive)); }
+
+function _computeBB(candles, period = 20, mult = 2) {
+  const cl = candles.map(c => c.c);
+  return cl.map((_, i) => {
+    if (i < period - 1) return { b: null, u: null, l: null };
+    const sl = cl.slice(i - period + 1, i + 1);
+    const mean = sl.reduce((a, v) => a + v, 0) / period;
+    const std = Math.sqrt(sl.reduce((a, v) => a + (v - mean) ** 2, 0) / period);
+    return { b: mean, u: mean + mult * std, l: mean - mult * std };
+  });
+}
+
+function _computeEMA(candles, period) {
+  const k = 2 / (period + 1), out = new Array(candles.length).fill(null);
+  if (candles.length < period) return out;
+  out[period - 1] = candles.slice(0, period).reduce((a, c) => a + c.c, 0) / period;
+  for (let i = period; i < candles.length; i++) out[i] = candles[i].c * k + out[i - 1] * (1 - k);
+  return out;
+}
+
+function _applyIndToPanel(p, id) {
+  if (!p.mainChart) return;
+  const candles = p.tf === "1s" ? p.liveCandles.slice(-p.chartZoom) : p.candleData?._liveCandles;
+  if (!candles?.length) return;
+  p.mainChart.data.datasets = p.mainChart.data.datasets.filter(d => d._indId !== id);
+  if (id === "ind_dsvwap") { p.mainChart.update("none"); return; }
+  const push = (data, color, name) => p.mainChart.data.datasets.push({
+    _indId: id, label: name,
+    data: data.map((v, i) => ({ x: i, y: v })),
+    borderColor: color, borderWidth: 1.5, pointRadius: 0, showLine: true, spanGaps: false, tension: 0.2
+  });
+  if (id === "ind_bb") {
+    const bb = _computeBB(candles);
+    push(bb.map(r => r.u), "#60a8f080", "BB Upper");
+    push(bb.map(r => r.b), "#3e8ef0cc", "BB Basis");
+    push(bb.map(r => r.l), "#60a8f080", "BB Lower");
+  }
+  if (id === "ind_ema") {
+    push(_computeEMA(candles, 9),  "#f0a030", "EMA 9");
+    push(_computeEMA(candles, 21), "#f06080", "EMA 21");
+  }
+  p.mainChart.update("none");
+}
+
+function _applyActiveInds(p) {
+  CHART_INDICATORS.forEach(ind => { if (indActive[ind.id]) _applyIndToPanel(p, ind.id); });
+}
+
+export function toggleChartIndicator(id, active) {
+  indActive[id] = active; _saveIndActive();
+  App.panels.forEach(p => {
+    if (!p.mainChart) return;
+    if (active) _applyIndToPanel(p, id);
+    else if (id === "ind_dsvwap") p.mainChart.update("none");
+    else { p.mainChart.data.datasets = p.mainChart.data.datasets.filter(d => d._indId !== id); p.mainChart.update("none"); }
+  });
 }
 
 // ── FORECAST PLUGIN ───────────────────────────────────────────────────────────
@@ -1089,6 +1256,10 @@ function buildProphetPlugin(p) {
 // Fast-path view update for pan/y-scale — avoids full chart recreation
 function _updateChartView(p) {
   if (!p.mainChart) return;
+  if (p.tf === "1s") {
+    if (p.liveCandles.length) { drawLiveChart(p, p.liveCandles[p.liveCandles.length - 1].c); drawUtility(p, p.liveCandles.slice(-p.chartZoom)); }
+    return;
+  }
   const candles = p.candleData?._liveCandles;
   if (!candles?.length) return;
   const { xMin, xMax } = _xBounds(p, candles);
@@ -1122,7 +1293,8 @@ export function resetPanelView(idx) {
   const ziEl = document.getElementById("zoom-indicator-" + p.idx);
   if (ziEl) ziEl.textContent = "ZOOM 150";
   _hideResetBtn(p);
-  if (p.candleData) { drawMainChart(p, p.candleData); drawUtility(p, p.candleData._liveCandles); }
+  if (p.tf === "1s") { if (p.liveCandles.length) drawLiveChart(p, p.liveCandles[p.liveCandles.length - 1].c); }
+  else if (p.candleData) { drawMainChart(p, p.candleData); drawUtility(p, p.candleData._liveCandles); }
 }
 
 export async function loadForecast(p, nocache = false) {
@@ -1454,8 +1626,9 @@ function _refreshPinePopup() {
   const body = document.getElementById("pine-popup-body");
   if (!body) return;
   body.innerHTML = "";
-  const overlays = PINE_SCRIPTS.filter(s => s.overlay);
-  const oscs = PINE_SCRIPTS.filter(s => !s.overlay);
+  const HIDDEN_FROM_PINE = new Set(["bb", "ema_cross", "file_dynamicswinganchoredvwap"]);
+  const overlays = PINE_SCRIPTS.filter(s => s.overlay && !HIDDEN_FROM_PINE.has(s.id));
+  const oscs = PINE_SCRIPTS.filter(s => !s.overlay && !HIDDEN_FROM_PINE.has(s.id));
   if (overlays.length) {
     const sec = document.createElement("div");
     sec.className = "pine-popup-section"; sec.textContent = "OVERLAY";
@@ -1482,6 +1655,43 @@ function _makePineRow(def) {
     : "";
   row.innerHTML = `<input type="checkbox" class="ind-cb" id="pine-cb-${def.id}" ${pineActive[def.id] ? "checked" : ""} onchange="togglePineIndicator('${def.id}',this.checked)"><span>${def.name}</span>${typeTag}${editBtn}`;
   return row;
+}
+
+// ── FLOATING INDICATORS POPUP ─────────────────────────────────────────────────
+let _indPopupEl = null;
+
+export function toggleIndPopup() {
+  if (!_indPopupEl) {
+    _indPopupEl = _buildIndPopupEl();
+    document.body.appendChild(_indPopupEl);
+  }
+  const showing = _indPopupEl.style.display !== "none";
+  _indPopupEl.style.display = showing ? "none" : "";
+  if (!showing) _refreshIndPopup();
+}
+
+function _buildIndPopupEl() {
+  const el = document.createElement("div");
+  el.className = "pine-popup";
+  el.style.cssText = "right:390px;top:56px;min-width:210px;";
+  el.innerHTML = `
+    <div class="pine-popup-head" id="ind-popup-head">INDICATORS <button class="pine-popup-close" onclick="toggleIndPopup()">×</button></div>
+    <div class="pine-popup-body" id="ind-popup-body"></div>
+  `;
+  _makeDraggable(el, el.querySelector(".pine-popup-head"));
+  return el;
+}
+
+function _refreshIndPopup() {
+  const body = document.getElementById("ind-popup-body");
+  if (!body) return;
+  body.innerHTML = "";
+  CHART_INDICATORS.forEach(ind => {
+    const row = document.createElement("label");
+    row.className = "pine-popup-row";
+    row.innerHTML = `<input type="checkbox" class="ind-cb" id="ind-cb-${ind.id}" ${indActive[ind.id] ? "checked" : ""} onchange="toggleChartIndicator('${ind.id}',this.checked)"><span>${ind.name}</span><span class="pine-popup-tag ovr" style="font-size:7px;letter-spacing:.5px;opacity:.65">${ind.desc}</span>`;
+    body.appendChild(row);
+  });
 }
 
 function _makeDraggable(el, handle) {
@@ -1539,6 +1749,8 @@ window.setWidgetSetting = setWidgetSetting;
 window.splitPanel = splitPanel;
 window.closePanel = closePanel;
 window.togglePinePopup = togglePinePopup;
+window.toggleIndPopup = toggleIndPopup;
+window.toggleChartIndicator = toggleChartIndicator;
 window.resetPanelView = resetPanelView;
 window.toggleUtilitySettings = toggleUtilitySettings;
 window.onUtilityYZoom = onUtilityYZoom;
