@@ -61,7 +61,7 @@ export function buildPanelEl(p) {
       <div class="loading hidden" id="loading-${i}"><span class="spinner"></span>LOADING</div>
     </div>
     <div class="utility-resizer" id="utility-resizer-${i}"></div>
-    <div class="utility-panel" id="utility-panel-${i}" style="height:${App.state.utility_height || 90}px;">
+    <div class="utility-panel" id="utility-panel-${i}" style="height:${p.widgetSettings?.utilityHeight || App.state.utility_height || 90}px;">
       <div class="utility-header">
         <select class="utility-select" id="utility-select-${i}" onchange="setUtilityMode(${i},this.value)">
           <option value="rsi">RSI</option>
@@ -257,7 +257,7 @@ export function initPanelEvents(p) {
       });
     });
     document.addEventListener("mouseup", () => {
-      if (_rDrag) { _rDrag = false; document.body.style.cursor = ""; }
+      if (_rDrag) { _rDrag = false; document.body.style.cursor = ""; saveMonitorPreset(); }
     });
   }
 }
@@ -293,12 +293,53 @@ export function renderChartContainer() {
     const rowEl = document.createElement("div");
     rowEl.className = "layout-row";
     container.appendChild(rowEl); // must be in DOM before initPanelEvents uses getElementById
-    row.forEach(idx => {
+    row.forEach((idx, j) => {
       const p = App.panels[idx]; if (!p) return;
       p.el = buildPanelEl(p);
+      if (p.widgetSettings?.panelFlexBasis) p.el.style.flex = `0 0 ${p.widgetSettings.panelFlexBasis}px`;
       rowEl.appendChild(p.el);
       initPanelEvents(p);
       applyTFButtons(p); applyUtilitySelect(p); applyWidgetModeSelect(p);
+      // H-resizer between adjacent panels in the same row
+      if (j < row.length - 1) {
+        const nextP = App.panels[row[j + 1]];
+        const hr = document.createElement("div");
+        hr.className = "h-panel-resizer";
+        rowEl.appendChild(hr);
+        hr.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          const startX = e.clientX, startW1 = p.el.getBoundingClientRect().width, startW2 = nextP?.el.getBoundingClientRect().width ?? 0;
+          p.el.style.flex = `0 0 ${startW1}px`;
+          if (nextP?.el) nextP.el.style.flex = `0 0 ${startW2}px`;
+          document.body.style.cursor = "col-resize";
+          let raf = null;
+          const onMove = (me) => {
+            if (raf) return;
+            raf = requestAnimationFrame(() => {
+              raf = null;
+              const dx = me.clientX - startX;
+              const w1 = Math.max(150, startW1 + dx), w2 = Math.max(150, startW2 - dx);
+              p.el.style.flex = `0 0 ${w1}px`;
+              if (nextP?.el) nextP.el.style.flex = `0 0 ${w2}px`;
+              if (!p.widgetSettings) p.widgetSettings = {};
+              p.widgetSettings.panelFlexBasis = w1;
+              if (nextP) { if (!nextP.widgetSettings) nextP.widgetSettings = {}; nextP.widgetSettings.panelFlexBasis = w2; }
+              [p, nextP].forEach(rp => { if (!rp?.candleData) return;
+                drawMainChart(rp, rp.candleData);
+                if (rp.candleData._liveCandles) drawUtility(rp, rp.candleData._liveCandles);
+              });
+            });
+          };
+          const onUp = () => {
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+            document.body.style.cursor = "";
+            saveMonitorPreset();
+          };
+          document.addEventListener("mousemove", onMove);
+          document.addEventListener("mouseup", onUp);
+        });
+      }
     });
   });
   _updateCloseButtons();
@@ -2011,6 +2052,24 @@ function onUtilityYZoom(idx, val) {
   if (p._lastUtilityCandles) drawUtility(p, p._lastUtilityCandles);
 }
 
+// ── RESET LAYOUT SIZES ───────────────────────────────────────────────────────
+export function resetLayoutSizes() {
+  App.panels.forEach(p => {
+    if (p.widgetSettings) {
+      delete p.widgetSettings.panelFlexBasis;
+      delete p.widgetSettings.utilityHeight;
+      delete p.widgetSettings.brainSectionHeights;
+    }
+    if (p.el) p.el.style.flex = '';
+    const utEl = document.getElementById('utility-panel-' + p.idx);
+    if (utEl) utEl.style.height = (App.state.utility_height || 90) + 'px';
+    ['con-log-lt-', 'con-log-sw-', 'con-log-st-'].forEach(pfx => {
+      const el = document.getElementById(pfx + p.idx); if (el) el.style.flex = '';
+    });
+  });
+  saveMonitorPreset();
+}
+
 // ── LOAD SWING CHART ─────────────────────────────────────────────────────────
 export function loadSwingChart(ticker, tf) {
   const target = App.panels.find(q => (q.widgetMode || 'candles') === 'candles') || App.panels[0];
@@ -2030,6 +2089,8 @@ export function loadSwingChart(ticker, tf) {
 // Expose inline-HTML onclick functions
 window.setPanelTF = setPanelTF;
 window.loadSwingChart = loadSwingChart;
+window.resetLayoutSizes = resetLayoutSizes;
+window.saveMonitorPreset = saveMonitorPreset;
 window.setUtilityMode = setUtilityMode;
 window.setLayout = setLayout;
 window.switchMonitor = switchMonitor;

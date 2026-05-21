@@ -145,6 +145,7 @@ function _buildDOM(p) {
     </div>
   `;
   _initResizers(p);
+  _restoreBrainHeights(p);
 }
 
 function _initResizers(p) {
@@ -175,10 +176,32 @@ function _initResizers(p) {
       const onUp = () => {
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
+        _saveBrainHeights(p);
       };
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
     });
+  });
+}
+
+function _saveBrainHeights(p) {
+  const ids = ['con-log-lt-', 'con-log-sw-', 'con-log-st-'];
+  const heights = ids.map(pfx => {
+    const el = document.getElementById(pfx + p.idx);
+    return el ? el.getBoundingClientRect().height : null;
+  });
+  if (!p.widgetSettings) p.widgetSettings = {};
+  p.widgetSettings.brainSectionHeights = heights;
+  window.saveMonitorPreset?.();
+}
+
+function _restoreBrainHeights(p) {
+  const h = p.widgetSettings?.brainSectionHeights;
+  if (!h) return;
+  ['con-log-lt-', 'con-log-sw-', 'con-log-st-'].forEach((pfx, i) => {
+    if (h[i] == null) return;
+    const el = document.getElementById(pfx + p.idx);
+    if (el) el.style.flex = `0 0 ${h[i]}px`;
   });
 }
 
