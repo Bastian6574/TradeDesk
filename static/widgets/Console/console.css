@@ -74,9 +74,10 @@
 .con-log.con-log-lt { flex: 2; }
 .con-log.con-log-st { flex: 3; }
 
-.con-log::-webkit-scrollbar       { width: 4px; }
-.con-log::-webkit-scrollbar-track { background: transparent; }
-.con-log::-webkit-scrollbar-thumb { background: #2a3545; border-radius: 2px; }
+.con-log::-webkit-scrollbar       { width: 6px; }
+.con-log::-webkit-scrollbar-track { background: #0a0e14; }
+.con-log::-webkit-scrollbar-thumb { background: #3d5575; border-radius: 3px; }
+.con-log::-webkit-scrollbar-thumb:hover { background: #4a6a8a; }
 
 /* ── ROWS ── */
 .con-row {

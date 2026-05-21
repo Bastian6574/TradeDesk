@@ -124,6 +124,7 @@ export function initPanelEvents(p) {
   p.el.addEventListener("mousedown", () => { if (App.activeIdx !== p.idx) setActivePanel(p.idx); });
   const wrap = document.getElementById("canvas-wrap-" + p.idx);
   wrap.addEventListener("wheel", (e) => {
+    if ((p.widgetMode || "candles") === "console") return;
     e.preventDefault();
     p.chartZoom = Math.max(3, Math.min(LIVE_MAX, p.chartZoom + (e.deltaY > 0 ? 10 : -10)));
     document.getElementById("zoom-indicator-" + p.idx).textContent = "ZOOM " + p.chartZoom;
