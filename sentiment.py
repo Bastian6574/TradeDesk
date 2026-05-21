@@ -103,46 +103,58 @@ def _fetch_ohlcv(interval: str, limit: int):
     except Exception:
         return None
 
+def _ema(series, span):
+    return series.ewm(span=span, adjust=False).mean()
+
+def _rsi(series, period=14):
+    delta = series.diff()
+    gain = delta.clip(lower=0).ewm(alpha=1/period, adjust=False).mean()
+    loss = (-delta.clip(upper=0)).ewm(alpha=1/period, adjust=False).mean()
+    rs = gain / loss.replace(0, float("nan"))
+    return 100 - (100 / (1 + rs))
+
 def _score_df(df) -> float:
-    try:
-        import math, pandas_ta as ta
-        if df is None or len(df) < 30:
-            return 0.0
-        d = df.copy()
-        d.ta.ema(length=20,  append=True)
-        d.ta.ema(length=50,  append=True)
-        d.ta.ema(length=200, append=True)
-        d.ta.rsi(length=14,  append=True)
-        d.ta.macd(append=True)
-        d.ta.bbands(length=20, append=True)
-        d.ta.stoch(append=True)
-        d.ta.adx(length=14,  append=True)
-        r = d.iloc[-1]
-        c = r["close"]
-        votes = []
-        for col in ["EMA_20","EMA_50","EMA_200"]:
-            v = r.get(col, float("nan"))
-            if not math.isnan(v): votes.append(1 if c > v else -1)
-        rsi = r.get("RSI_14", float("nan"))
-        if not math.isnan(rsi):
-            votes.append(1 if rsi >= 55 else -1 if rsi <= 45 else 0)
-        mh = r.get("MACDh_12_26_9", float("nan"))
-        if not math.isnan(mh): votes.append(1 if mh > 0 else -1)
-        bbp = r.get("BBP_20_2.0_2.0", float("nan"))
-        if not math.isnan(bbp):
-            votes.append(1 if bbp > 0.6 else -1 if bbp < 0.4 else 0)
-        stk = r.get("STOCHk_14_3_3", float("nan"))
-        std = r.get("STOCHd_14_3_3", float("nan"))
-        if not math.isnan(stk) and not math.isnan(std):
-            votes.append(1 if stk > std and stk < 80 else -1 if stk < std and stk > 20 else 0)
-        adx = r.get("ADX_14", float("nan"))
-        dmp = r.get("DMP_14", float("nan"))
-        dmn = r.get("DMN_14", float("nan"))
-        if not math.isnan(adx) and adx > 20 and not math.isnan(dmp) and not math.isnan(dmn):
-            votes.append(1 if dmp > dmn else -1)
-        return round(sum(votes) / len(votes), 3) if votes else 0.0
-    except Exception:
+    import math
+    if df is None or len(df) < 30:
         return 0.0
+    c = df["close"]
+    h = df["high"]
+    l = df["low"]
+
+    ema20  = _ema(c, 20).iloc[-1]
+    ema50  = _ema(c, 50).iloc[-1]
+    ema200 = _ema(c, 200).iloc[-1] if len(df) >= 200 else float("nan")
+    last   = c.iloc[-1]
+
+    rsi_val = _rsi(c, 14).iloc[-1]
+
+    ema12 = _ema(c, 12); ema26 = _ema(c, 26)
+    macd_line   = ema12 - ema26
+    macd_signal = _ema(macd_line, 9)
+    macd_hist   = (macd_line - macd_signal).iloc[-1]
+
+    sma20 = c.rolling(20).mean(); std20 = c.rolling(20).std()
+    bb_upper = (sma20 + 2 * std20).iloc[-1]
+    bb_lower = (sma20 - 2 * std20).iloc[-1]
+    bb_pct = (last - bb_lower) / (bb_upper - bb_lower) if (bb_upper - bb_lower) > 0 else float("nan")
+
+    lo14 = l.rolling(14).min(); hi14 = h.rolling(14).max()
+    stoch_k_raw = 100 * (c - lo14) / (hi14 - lo14).replace(0, float("nan"))
+    stoch_k = stoch_k_raw.rolling(3).mean()
+    stoch_d = stoch_k.rolling(3).mean()
+    sk, sd = stoch_k.iloc[-1], stoch_d.iloc[-1]
+
+    votes = []
+    for v in [ema20, ema50]:
+        if not math.isnan(v): votes.append(1 if last > v else -1)
+    if not math.isnan(ema200): votes.append(1 if last > ema200 else -1)
+    if not math.isnan(rsi_val): votes.append(1 if rsi_val >= 55 else -1 if rsi_val <= 45 else 0)
+    if not math.isnan(macd_hist): votes.append(1 if macd_hist > 0 else -1)
+    if not math.isnan(bb_pct):   votes.append(1 if bb_pct > 0.6 else -1 if bb_pct < 0.4 else 0)
+    if not math.isnan(sk) and not math.isnan(sd):
+        votes.append(1 if sk > sd and sk < 80 else -1 if sk < sd and sk > 20 else 0)
+
+    return round(sum(votes) / len(votes), 3) if votes else 0.0
 
 def _tech_update():
     scores = {}; weighted = 0.0; total_w = 0.0
