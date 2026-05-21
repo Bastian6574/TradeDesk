@@ -354,7 +354,7 @@ async function _runScan(p) {
   const sigs   = [];
 
   // Re-check swing entries every hour
-  if (!p._swingLastCheck || Date.now() - p._swingLastCheck > 3_600_000) {
+  if (!p._swingLastCheck || Date.now() - p._swingLastCheck > 1_800_000) {
     p._swingLastCheck = Date.now();
     _checkSwingEntries(p).catch(() => {});
   }
@@ -705,7 +705,7 @@ function _detectMABounce(candles, cfg) {
 // ── SWING ENTRY SCANNER ───────────────────────────────────────────────────────
 async function _checkSwingEntries(p, force = false) {
   const now = Date.now();
-  if (!force && _swingData && (now - _swingFetch) < 3_600_000) {
+  if (!force && _swingData && (now - _swingFetch) < 1_800_000) {
     _renderSwingEntries(p, _swingData);
     return;
   }

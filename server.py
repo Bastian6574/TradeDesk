@@ -813,7 +813,14 @@ def get_daily_forecast(ticker):
 
 SWING_CACHE_FILE = "swing_watchlist.json"
 SWING_FILE_TTL   = 86400   # 24h
-SWING_MEM_TTL    = 3600    # 1h
+SWING_MEM_TTL    = 1800    # 30min
+
+# Mirrors FAVORITES in research.js — these are always included in swing scans
+SWING_UNIVERSE = [
+    "AMD","META","PPFB","MSFT","NET","GOOG","IBM","ETOR","SPY","BRK-B",
+    "AAPL","PLTR","CRM","GME","SIE.DE","RIOT","HUT","KO","ANET","QQQ","VOOV",
+    "IDEV","CSCO","ORCL","DIS","MARA","NVDA","TSLA","AMZN","RHM.DE",
+]
 
 
 def _compute_swing_technicals(ticker, interval, period):
@@ -990,8 +997,14 @@ def _claude_swing_analysis(ticker, tf, tech, signals):
 
 
 def _run_swing_scan():
-    state     = load_state()
-    watchlist = [t for t in (state.get("watchlist") or []) if t not in CRYPTO_TICKERS]
+    state    = load_state()
+    user_wl  = [t for t in (state.get("watchlist") or []) if t not in CRYPTO_TICKERS]
+    # Merge research favorites + user watchlist, deduplicated, crypto filtered
+    seen = set()
+    watchlist = []
+    for t in [*[x for x in SWING_UNIVERSE if x not in CRYPTO_TICKERS], *user_wl]:
+        if t not in seen:
+            seen.add(t); watchlist.append(t)
     if not watchlist:
         return {"entries": {}, "watchlist": [], "ts": time.time()}
 
