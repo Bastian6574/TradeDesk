@@ -87,8 +87,20 @@
 
       <div id="right-panel-scroll">
 
+        <!-- Daily Forecast -->
+        <div class="right-panel-header">DAILY FORECAST</div>
+        <div id="forecast-widget" class="rp-widget forecast-widget">
+          <div class="rp-widget-top">
+            <span class="rp-dot" id="forecast-dot">●</span>
+            <span class="rp-widget-title">TODAY</span>
+            <span class="rp-badge" id="forecast-label">LOADING</span>
+            <span class="rp-ts" id="forecast-conf"></span>
+            <span class="rp-ts" id="forecast-sub" style="margin-left:4px;font-size:8px;color:var(--text3);"></span>
+          </div>
+        </div>
+
         <!-- Sentiment -->
-        <div class="right-panel-header">SENTIMENT</div>
+        <div class="right-panel-header" style="border-top:1px solid var(--border);">SENTIMENT</div>
         <div id="right-panel-content">
           <div class="rp-widget" id="rp-tech">
             <div class="rp-widget-top">
@@ -284,6 +296,9 @@
     </div>
   </div>
 </div>
+
+<!-- FORECAST TOOLTIP -->
+<div id="forecast-tooltip"></div>
 
 <!-- NEWS TOOLTIP -->
 <div id="news-tooltip"></div>

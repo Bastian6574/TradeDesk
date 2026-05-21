@@ -24,12 +24,13 @@ const LIVE_TFS = [
 export function startConsole(p) {
   if (p._conTimer) { clearInterval(p._conTimer); p._conTimer = null; }
   _buildDOM(p);
-  p._conActive      = true;
-  p._conLive        = false;
-  p._conCooldowns   = new Map();
-  p._scanCount      = 0;
-  p._conPrevStState = null;
-  p._conPrevLtState = null;
+  p._conActive         = true;
+  p._conLive           = false;
+  p._conCooldowns      = new Map();
+  p._scanCount         = 0;
+  p._conPrevStState    = null;
+  p._conPrevLtState    = null;
+  p._conPrevSocialLabel = null;
   _emit(p, '#6a8099', 'SYS', `monitoring ${p.ticker} · scanning 15m 30m 1h 1d`, null, null, 'st');
   _runScan(p);
   p._conTimer = setInterval(() => _runScan(p), SCAN_MS);
@@ -99,6 +100,7 @@ function _buildDOM(p) {
       <span class="con-section-title">LONGTERM TREND</span>
       <span class="con-section-dot">··</span>
       <span class="con-section-state" id="con-lt-state-${p.idx}">─</span>
+      <span class="con-section-summary" id="con-lt-summary-${p.idx}"></span>
     </div>
     <div class="con-log con-log-lt" id="con-log-lt-${p.idx}"></div>
 
@@ -106,6 +108,7 @@ function _buildDOM(p) {
       <span class="con-section-title">SHORTTERM TREND</span>
       <span class="con-section-dot">··</span>
       <span class="con-section-state" id="con-st-state-${p.idx}">─</span>
+      <span class="con-section-summary" id="con-st-summary-${p.idx}"></span>
     </div>
     <div class="con-log con-log-st" id="con-log-st-${p.idx}"></div>
 
@@ -180,6 +183,69 @@ function _updateSectionState(idx, section, state) {
   el.textContent = state;
   el.style.color = _STATE_COLOR[state] || '#6a8099';
   el.classList.toggle('con-state-violent', state === 'VIOLENT');
+}
+
+// ── BRAIN SUMMARY BADGE ───────────────────────────────────────────────────────
+function _brainSummary(p, section) {
+  const scores = [];
+
+  // Tech breakdown (30%) — use timeframe-appropriate slices
+  const tech = App._techData || App._sentimentData?.tech;
+  if (tech?.breakdown) {
+    const tfs = section === 'lt' ? ['1h', '4h', '1d'] : ['15m', '30m', '1h'];
+    const vals = tfs.map(tf => tech.breakdown[tf]).filter(v => v != null);
+    if (vals.length) scores.push({ s: vals.reduce((a, b) => a + b, 0) / vals.length, w: 0.30 });
+  } else if (tech?.score != null) {
+    scores.push({ s: Math.max(-1, Math.min(1, tech.score / 3)), w: 0.30 });
+  }
+
+  // F&G (10%, contrarian)
+  const fng = App._sentimentData?.fng;
+  if (fng?.value != null) {
+    const fv = fng.value;
+    const fb = fv < 25 ? 0.6 : fv < 40 ? 0.3 : fv < 60 ? 0 : fv < 75 ? -0.3 : -0.6;
+    scores.push({ s: fb, w: 0.10 });
+  }
+
+  // News (15%)
+  const news = App._sentimentData?.news;
+  if (news) {
+    const rel = (news.buy_count || 0) + (news.sell_count || 0);
+    if (rel > 0) scores.push({ s: ((news.buy_count || 0) - (news.sell_count || 0)) / rel, w: 0.15 });
+  }
+
+  // Social (15%)
+  const social = App._socialData;
+  if (social?.score != null) {
+    scores.push({ s: (social.score - 50) / 50, w: 0.15 });
+  }
+
+  // Recent signal directions from this section's log (30%)
+  const logId = section === 'lt' ? `con-log-lt-${p.idx}` : `con-log-st-${p.idx}`;
+  const log = document.getElementById(logId);
+  if (log) {
+    const dirs = Array.from(log.querySelectorAll('.con-dir')).slice(-20);
+    const bulls = dirs.filter(r => r.classList.contains('bull')).length;
+    const bears = dirs.filter(r => r.classList.contains('bear')).length;
+    const total = bulls + bears;
+    if (total > 0) scores.push({ s: (bulls - bears) / total, w: 0.30 });
+  }
+
+  if (!scores.length) return null;
+  const tw = scores.reduce((a, b) => a + b.w, 0);
+  const composite = scores.reduce((a, b) => a + b.s * b.w, 0) / tw;
+  const pct = Math.round(Math.abs(composite) * 100);
+  const label = composite > 0.08 ? 'BULL' : composite < -0.08 ? 'BEAR' : 'NEUT';
+  const color = composite > 0.08 ? '#00d47e' : composite < -0.08 ? '#f03e3e' : '#ff9500';
+  return { label, pct, color };
+}
+
+function _updateSectionSummary(idx, section, summary) {
+  const el = document.getElementById(`con-${section}-summary-${idx}`);
+  if (!el) return;
+  if (!summary) { el.textContent = ''; return; }
+  el.textContent = `${summary.label} ${summary.pct}%`;
+  el.style.color = summary.color;
 }
 
 // ── PANEL OUTLINE SYSTEM ──────────────────────────────────────────────────────
@@ -296,6 +362,21 @@ async function _runScan(p) {
     _fetchAndEmitSocial(p, 'lt', ltState, p._conPrevLtState);
   if (stState) p._conPrevStState = stState;
   if (ltState) p._conPrevLtState = ltState;
+
+  // Detect social sentiment label change
+  const socialLabel = App._socialData?.label;
+  if (socialLabel && p._conPrevSocialLabel !== null && socialLabel !== p._conPrevSocialLabel) {
+    const dir   = socialLabel === 'BULLISH' ? 'bull' : socialLabel === 'BEARISH' ? 'bear' : null;
+    const color = socialLabel === 'BULLISH' ? '#00d47e' : socialLabel === 'BEARISH' ? '#f03e3e' : '#ff9500';
+    _emit(p, color, `◎ SOCIAL → ${socialLabel}`,
+      `sentiment shifted: ${p._conPrevSocialLabel} → ${socialLabel}  score ${App._socialData?.score ?? '?'}/100`,
+      App._socialData?.score ?? null, dir, 'st');
+  }
+  if (socialLabel) p._conPrevSocialLabel = socialLabel;
+
+  // Update summary badges
+  _updateSectionSummary(p.idx, 'st', _brainSummary(p, 'st'));
+  _updateSectionSummary(p.idx, 'lt', _brainSummary(p, 'lt'));
 
   // If live + short-term market is violent, re-scan with 1m/5m
   if (p._conLive && stState === 'VIOLENT') {

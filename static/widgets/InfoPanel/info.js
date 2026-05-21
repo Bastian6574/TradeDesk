@@ -130,6 +130,7 @@ function updateSentimentPanel(s) {
   const bd = Object.entries(s.tech.breakdown || {}).map(([tf, v]) => `${tf}:${v >= 0 ? "+" : ""}${v.toFixed(2)}`).join("  ");
   document.getElementById("rp-tech-detail").textContent = `score:${s.tech.score >= 0 ? "+" : ""}${(s.tech.score || 0).toFixed(2)}  ${bd}`;
   App._techData = s.tech;
+  App._sentimentData = s;
   upd(document.getElementById("rp-fng-dot"), document.getElementById("rp-fng-label"), document.getElementById("rp-fng-ts"), s.fng);
   document.getElementById("rp-fng-detail").textContent = s.fng.value !== null ? `${s.fng.value}/100 — ${s.fng.classification || ""}` : "scanning...";
   App.newsHeadlines = s.news.headlines || [];
@@ -288,6 +289,7 @@ window.rpRecalc = function() {
   fetchSentiment(t);
   fetchSocial(t);
   fetchDetails(t);
+  fetchDailyForecast(t);
   import('../FundingOI/funding.js').then(m => m.fetchFunding(t));
   // Restart any Brain panels on this monitor so they scan the recalc'd ticker
   App.panels.forEach(p => {
@@ -298,6 +300,79 @@ window.rpRecalc = function() {
   });
   import('../MainChart/chart.js').then(m => m.saveMonitorPreset());
 };
+
+// ── DAILY FORECAST ────────────────────────────────────────────────────────────
+export async function fetchDailyForecast(ticker) {
+  const t = ticker || getContextTicker();
+  try {
+    const r = await fetch(API + `/api/daily_forecast/${encodeURIComponent(t)}`);
+    if (!r.ok) { _forecastNA(); return; }
+    const d = await r.json();
+    if (d.error) { _forecastNA(); return; }
+    _updateForecastWidget(d);
+  } catch (_) { _forecastNA(); }
+}
+
+export function scheduleForecast() {
+  fetchDailyForecast();
+  setInterval(() => fetchDailyForecast(), 1800000);
+}
+
+function _forecastNA() {
+  const dot  = document.getElementById('forecast-dot');
+  const lbl  = document.getElementById('forecast-label');
+  const conf = document.getElementById('forecast-conf');
+  if (dot)  dot.className = 'rp-dot';
+  if (lbl)  { lbl.className = 'rp-badge'; lbl.textContent = 'LOADING'; }
+  if (conf) conf.textContent = '';
+}
+
+function _updateForecastWidget(d) {
+  const dot  = document.getElementById('forecast-dot');
+  const lbl  = document.getElementById('forecast-label');
+  const conf = document.getElementById('forecast-conf');
+  const sub  = document.getElementById('forecast-sub');
+  if (!dot) return;
+  const color = d.color === 'green' ? 'green' : d.color === 'red' ? 'red' : 'amber';
+  dot.className = 'rp-dot ' + color;
+  lbl.className = 'rp-badge ' + color;
+  lbl.textContent = d.label || 'NEUTRAL';
+  if (conf) conf.textContent = d.confidence ? d.confidence + '%' : '';
+  if (sub)  sub.textContent  = d.model === 'claude-haiku' ? 'AI' : 'heuristic';
+  App._forecastData = d;
+}
+
+export function initForecastTooltip() {
+  const widget  = document.getElementById('forecast-widget');
+  const tooltip = document.getElementById('forecast-tooltip');
+  if (!widget || !tooltip) return;
+  widget.addEventListener('mouseenter', () => {
+    const d = App._forecastData;
+    if (!d) return;
+    let html = '';
+    if (d.summary)    html += `<div class="ft-summary">${d.summary}</div>`;
+    if (d.price_bias) html += `<div class="ft-bias">${d.price_bias}</div>`;
+    const bulls = d.bull_factors || [], bears = d.bear_factors || [];
+    if (bulls.length) html += `<div class="ft-section bull">BULLISH FACTORS</div>` +
+      bulls.map(f => `<div class="ft-item bull">▲ ${f}</div>`).join('');
+    if (bears.length) html += `<div class="ft-section bear">BEARISH FACTORS</div>` +
+      bears.map(f => `<div class="ft-item bear">▼ ${f}</div>`).join('');
+    if (d.key_risk)   html += `<div class="ft-risk">⚠ ${d.key_risk}</div>`;
+    const model = d.model === 'claude-haiku' ? 'Claude Haiku AI' : 'Heuristic model';
+    html += `<div class="ft-meta">${model}${d.confidence ? ' · ' + d.confidence + '% confidence' : ''}${d.last_update ? ' · ' + d.last_update : ''}</div>`;
+    if (!html) return;
+    tooltip.innerHTML = html;
+    tooltip.classList.add('visible');
+  });
+  widget.addEventListener('mousemove', (e) => {
+    const pad = 10;
+    let left = e.clientX - tooltip.offsetWidth - pad;
+    if (left < pad) left = e.clientX + pad;
+    tooltip.style.left = left + 'px';
+    tooltip.style.top = Math.min(e.clientY - 10, window.innerHeight - tooltip.offsetHeight - pad) + 'px';
+  });
+  widget.addEventListener('mouseleave', () => tooltip.classList.remove('visible'));
+}
 
 // Expose for inline HTML handlers
 window.setIndicator = setIndicator;

@@ -50,6 +50,15 @@
 .con-section-state.con-state-violent {
   animation: con-pulse 1.4s ease-in-out infinite;
 }
+.con-section-summary {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #3d5066;
+  margin-left: 4px;
+  transition: color 0.4s;
+}
 @keyframes con-pulse {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.45; }

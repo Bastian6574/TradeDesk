@@ -118,6 +118,34 @@
 .rp-theme-tag.bull { border-color: #00d47e55; color: #00d47e; }
 .rp-theme-tag.bear { border-color: #f03e3e55; color: #f03e3e; }
 
+/* ── DAILY FORECAST WIDGET ── */
+.forecast-widget { cursor: default; }
+#forecast-tooltip {
+  position: fixed;
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  padding: 10px 12px;
+  font-family: var(--font);
+  font-size: 10px;
+  color: var(--text2);
+  max-width: 310px;
+  z-index: 200;
+  pointer-events: none;
+  display: none;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+#forecast-tooltip.visible { display: block; }
+.ft-summary { font-size: 9px; color: var(--text2); line-height: 1.6; margin-bottom: 7px; }
+.ft-bias { font-size: 10px; color: var(--text); margin-bottom: 7px; font-weight: 600; }
+.ft-section { font-size: 8px; letter-spacing: 1px; margin: 6px 0 3px; }
+.ft-section.bull { color: var(--green); }
+.ft-section.bear { color: var(--red); }
+.ft-item { font-size: 9px; line-height: 1.6; }
+.ft-item.bull { color: var(--green); }
+.ft-item.bear { color: var(--red); }
+.ft-risk { font-size: 9px; color: var(--amber); margin-top: 7px; line-height: 1.5; }
+.ft-meta { font-size: 8px; color: var(--text3); margin-top: 7px; letter-spacing: 0.5px; }
+
 /* ── TECH TOOLTIP ── */
 #tech-tooltip {
   position: fixed;

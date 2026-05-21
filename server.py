@@ -643,6 +643,174 @@ def get_social_sentiment(ticker):
     except Exception as ex:
         return jsonify({"error": str(ex)}), 500
 
+def _claude_daily_forecast(ticker, inputs, signals, bias_score, bias_label):
+    parts = [f"Ticker: {ticker}"]
+    if "price" in inputs:
+        p = inputs["price"]
+        parts.append(f"Price: {p.get('last')} | 5d: {p.get('pct_5d')}% | 1m: {p.get('pct_1m')}%")
+    if "tech" in inputs:
+        t_ = inputs["tech"]
+        parts.append(f"Technical: {t_.get('label')} score={t_.get('score')}")
+        if t_.get("breakdown"):
+            bd = " ".join(f"{k}:{v:+.2f}" for k, v in t_["breakdown"].items())
+            parts.append(f"  TF breakdown: {bd}")
+    if "fng" in inputs:
+        f_ = inputs["fng"]
+        if f_.get("value") is not None:
+            parts.append(f"Fear & Greed: {f_.get('value')}/100 ({f_.get('classification','')})")
+    if "news" in inputs:
+        n_ = inputs["news"]
+        parts.append(f"News: {n_.get('label')} ▲{n_.get('buy_count',0)}/▼{n_.get('sell_count',0)}")
+    if "social" in inputs:
+        s_ = inputs["social"]
+        parts.append(f"Social: {s_.get('label')} score={s_.get('score')}/100 ▲{s_.get('bull_count',0)}/▼{s_.get('bear_count',0)}")
+        if s_.get("summary"):
+            parts.append(f"  Social summary: {s_['summary'][:150]}")
+    if "funding" in inputs:
+        f_ = inputs["funding"]
+        parts.append(f"Funding rate: {f_.get('rate',0):.4f}% per 8h | OI: ${(f_.get('oi',0) or 0)/1e9:.1f}B")
+    sig_lines = [f"  {name}: {sig.get('label','')} (bias {sig.get('bias',0):+.2f})"
+                 for name, sig in list(signals.items())[:6]]
+    if sig_lines:
+        parts.append("Signals:\n" + "\n".join(sig_lines))
+    parts.append(f"Heuristic composite: {bias_score:+.3f} → {bias_label}")
+    data_summary = "\n".join(parts)
+    prompt = (
+        f"You are a senior quantitative analyst. Based on the following market data, "
+        f"provide a concise daily forecast for {ticker}.\n\n{data_summary}\n\n"
+        "Respond with a JSON object (no markdown, just the JSON):\n"
+        '{"label":"BULLISH" or "BEARISH" or "NEUTRAL","confidence":integer 40-95,'
+        '"summary":"2-3 sentence summary","bull_factors":["factor1","factor2","factor3"],'
+        '"bear_factors":["factor1","factor2","factor3"],'
+        '"key_risk":"single biggest risk today","price_bias":"brief directional bias"}\n'
+        "Be concise, data-driven, and specific to the numbers provided."
+    )
+    try:
+        r = _req.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 450,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=15,
+        )
+        if not r.ok:
+            return None
+        text = r.json().get("content", [{}])[0].get("text", "")
+        start = text.find("{"); end = text.rfind("}") + 1
+        if start >= 0 and end > start:
+            parsed = json.loads(text[start:end])
+            return {
+                "label":        parsed.get("label", bias_label),
+                "confidence":   int(parsed.get("confidence", 65)),
+                "summary":      parsed.get("summary"),
+                "bull_factors": parsed.get("bull_factors", []),
+                "bear_factors": parsed.get("bear_factors", []),
+                "key_risk":     parsed.get("key_risk"),
+                "price_bias":   parsed.get("price_bias"),
+            }
+    except Exception:
+        pass
+    return None
+
+
+@app.route("/api/daily_forecast/<ticker>")
+def get_daily_forecast(ticker):
+    t = ticker.upper()
+    cache_key = ("daily_forecast", t)
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return jsonify(cached)
+    try:
+        inputs = {}
+        # Price action
+        daily_data = fetch_chart_data(t, "1mo", "1d")
+        closes = []
+        if daily_data and not daily_data.get("error") and daily_data.get("candles"):
+            candles = daily_data["candles"]
+            closes  = [c["c"] for c in candles]
+            if len(closes) >= 5:
+                inputs["price"] = {
+                    "last":   closes[-1],
+                    "pct_5d": round((closes[-1] - closes[-5]) / closes[-5] * 100, 2),
+                    "pct_1m": round((closes[-1] - closes[0])  / closes[0]  * 100, 2),
+                }
+        # Sentiment
+        sentiment = None
+        if _sentiment:
+            try:
+                sentiment = _sentiment.get() if t in CRYPTO_TICKERS else \
+                            _cache_get(("sentiment_stock", t)) or _stock_sentiment(t)
+                inputs["tech"] = sentiment.get("tech", {})
+                inputs["fng"]  = sentiment.get("fng",  {})
+                inputs["news"] = sentiment.get("news", {})
+            except Exception:
+                pass
+        # Social (from cache if available)
+        social_cached = _cache_get(("social", t))
+        if social_cached:
+            inputs["social"] = {
+                "label":      social_cached.get("label"),
+                "score":      social_cached.get("score"),
+                "bull_count": social_cached.get("bull_count"),
+                "bear_count": social_cached.get("bear_count"),
+                "summary":    social_cached.get("summary"),
+                "themes":     (social_cached.get("themes") or [])[:3],
+            }
+        # Funding (crypto only, from cache)
+        if t in CRYPTO_TICKERS:
+            fund_cached = _cache_get(("funding", t + "USDT"))
+            if fund_cached:
+                inputs["funding"] = {
+                    "rate": fund_cached.get("last_funding_rate"),
+                    "oi":   fund_cached.get("oi_usd"),
+                }
+        # Heuristic bias
+        bias_score, bias_label, signals = 0.0, "NEUTRAL", {}
+        if closes:
+            try:
+                bias_score, bias_label, signals = _heuristic_bias(
+                    _np.array(closes), t in CRYPTO_TICKERS, sentiment
+                )
+            except Exception:
+                pass
+        confidence = min(95, max(40, round(abs(bias_score) * 100 + 50)))
+        color = "green" if bias_score > 0.1 else "red" if bias_score < -0.1 else "amber"
+        result = {
+            "label":        bias_label,
+            "confidence":   confidence,
+            "color":        color,
+            "bias_score":   round(bias_score, 3),
+            "signals":      signals,
+            "summary":      None,
+            "bull_factors": [],
+            "bear_factors": [],
+            "key_risk":     None,
+            "price_bias":   None,
+            "inputs":       inputs,
+            "last_update":  datetime.now().strftime("%H:%M"),
+            "model":        "heuristic",
+        }
+        if ANTHROPIC_API_KEY:
+            try:
+                ai = _claude_daily_forecast(t, inputs, signals, bias_score, bias_label)
+                if ai:
+                    result.update(ai)
+                    result["model"] = "claude-haiku"
+            except Exception:
+                pass
+        _cache_set(cache_key, result, 1800)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 def _stock_sentiment(ticker):
     now_str = datetime.now().strftime("%H:%M")
     # TECH: RSI + MACD across 1h and 1d
