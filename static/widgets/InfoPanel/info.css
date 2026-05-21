@@ -118,6 +118,29 @@
 .rp-theme-tag.bull { border-color: #00d47e55; color: #00d47e; }
 .rp-theme-tag.bear { border-color: #f03e3e55; color: #f03e3e; }
 
+/* ── TECH TOOLTIP ── */
+#tech-tooltip {
+  position: fixed;
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  padding: 9px 11px;
+  font-family: var(--font);
+  z-index: 200;
+  pointer-events: none;
+  display: none;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+#tech-tooltip.visible { display: block; }
+.tt-grid { border-collapse: collapse; font-size: 9px; }
+.tt-grid th { color: var(--text3); padding: 2px 8px 4px; text-align: center; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
+.tt-grid tr:first-child th:first-child { padding-left: 0; }
+.tt-name { color: var(--text2); padding: 3px 10px 3px 0; font-size: 9px; white-space: nowrap; }
+.tt-grid td { text-align: center; padding: 3px 8px; font-size: 10px; }
+.tt-bull { color: var(--green); }
+.tt-bear { color: var(--red); }
+.tt-neut { color: var(--text3); font-size: 9px; }
+.tt-na   { color: var(--border2); }
+
 /* ── NEWS TOOLTIP ── */
 #news-tooltip { position:fixed; background:var(--bg2); border:1px solid var(--border2); padding:9px 11px; font-family:var(--font); font-size:10px; color:var(--text2); line-height:1.8; max-width:300px; z-index:200; pointer-events:none; display:none; box-shadow:0 4px 16px rgba(0,0,0,0.5); }
 #news-tooltip.visible { display:block; }

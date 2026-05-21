@@ -113,13 +113,14 @@ def _rsi(series, period=14):
     rs = gain / loss.replace(0, float("nan"))
     return 100 - (100 / (1 + rs))
 
-def _score_df(df) -> float:
+_IND_ORDER = ["EMA20", "EMA50", "EMA200", "RSI14", "MACD", "BB%", "Stoch"]
+
+def _score_df(df):
+    """Returns (score, ind_votes) where ind_votes is {name: vote} (1=bull,-1=bear,0=neutral)."""
     import math
     if df is None or len(df) < 30:
-        return 0.0
-    c = df["close"]
-    h = df["high"]
-    l = df["low"]
+        return 0.0, {}
+    c = df["close"]; h = df["high"]; l = df["low"]
 
     ema20  = _ema(c, 20).iloc[-1]
     ema50  = _ema(c, 50).iloc[-1]
@@ -129,46 +130,55 @@ def _score_df(df) -> float:
     rsi_val = _rsi(c, 14).iloc[-1]
 
     ema12 = _ema(c, 12); ema26 = _ema(c, 26)
-    macd_line   = ema12 - ema26
-    macd_signal = _ema(macd_line, 9)
-    macd_hist   = (macd_line - macd_signal).iloc[-1]
+    macd_hist = (_ema(ema12 - ema26, 9) * -1 + (ema12 - ema26)).iloc[-1]
 
     sma20 = c.rolling(20).mean(); std20 = c.rolling(20).std()
-    bb_upper = (sma20 + 2 * std20).iloc[-1]
-    bb_lower = (sma20 - 2 * std20).iloc[-1]
+    bb_upper = (sma20 + 2 * std20).iloc[-1]; bb_lower = (sma20 - 2 * std20).iloc[-1]
     bb_pct = (last - bb_lower) / (bb_upper - bb_lower) if (bb_upper - bb_lower) > 0 else float("nan")
 
     lo14 = l.rolling(14).min(); hi14 = h.rolling(14).max()
-    stoch_k_raw = 100 * (c - lo14) / (hi14 - lo14).replace(0, float("nan"))
-    stoch_k = stoch_k_raw.rolling(3).mean()
+    stoch_k = (100 * (c - lo14) / (hi14 - lo14).replace(0, float("nan"))).rolling(3).mean()
     stoch_d = stoch_k.rolling(3).mean()
     sk, sd = stoch_k.iloc[-1], stoch_d.iloc[-1]
 
-    votes = []
-    for v in [ema20, ema50]:
-        if not math.isnan(v): votes.append(1 if last > v else -1)
-    if not math.isnan(ema200): votes.append(1 if last > ema200 else -1)
-    if not math.isnan(rsi_val): votes.append(1 if rsi_val >= 55 else -1 if rsi_val <= 45 else 0)
-    if not math.isnan(macd_hist): votes.append(1 if macd_hist > 0 else -1)
-    if not math.isnan(bb_pct):   votes.append(1 if bb_pct > 0.6 else -1 if bb_pct < 0.4 else 0)
-    if not math.isnan(sk) and not math.isnan(sd):
-        votes.append(1 if sk > sd and sk < 80 else -1 if sk < sd and sk > 20 else 0)
+    votes = []; ind = {}
 
-    return round(sum(votes) / len(votes), 3) if votes else 0.0
+    def _vote(name, v):
+        if not math.isnan(v):
+            votes.append(v); ind[name] = v
+
+    _vote("EMA20",  1 if last > ema20  else -1)
+    _vote("EMA50",  1 if last > ema50  else -1)
+    if not math.isnan(ema200): _vote("EMA200", 1 if last > ema200 else -1)
+    if not math.isnan(rsi_val):  _vote("RSI14",  1 if rsi_val >= 55 else -1 if rsi_val <= 45 else 0)
+    if not math.isnan(macd_hist): _vote("MACD",  1 if macd_hist > 0 else -1)
+    if not math.isnan(bb_pct):   _vote("BB%",   1 if bb_pct > 0.6 else -1 if bb_pct < 0.4 else 0)
+    if not math.isnan(sk) and not math.isnan(sd):
+        _vote("Stoch", 1 if sk > sd and sk < 80 else -1 if sk < sd and sk > 20 else 0)
+
+    return (round(sum(votes) / len(votes), 3) if votes else 0.0), ind
 
 def _tech_update():
-    scores = {}; weighted = 0.0; total_w = 0.0
+    scores = {}; weighted = 0.0; total_w = 0.0; ind_by_tf = {}
     for tf, (limit, weight) in TECH_TIMEFRAMES.items():
         df = _fetch_ohlcv(tf, limit)
-        s  = _score_df(df)
+        s, ind = _score_df(df)
         scores[tf] = round(s, 3)
-        weighted  += s * weight; total_w += weight
+        weighted += s * weight; total_w += weight
+        ind_by_tf[tf] = ind
     composite = round(weighted / total_w, 3) if total_w else 0.0
     label = "BULLISH" if composite >= 0.2 else "BEARISH" if composite <= -0.2 else "NEUTRAL"
+    tfs = list(TECH_TIMEFRAMES.keys())
+    indicators = {
+        name: {tf: ind_by_tf[tf].get(name) for tf in tfs}
+        for name in _IND_ORDER
+        if any(name in ind_by_tf[tf] for tf in tfs)
+    }
     with _lock:
         _state["tech"].update({
             "label": label, "score": composite,
-            "breakdown": scores, "last_update": datetime.now()
+            "breakdown": scores, "indicators": indicators,
+            "last_update": datetime.now()
         })
 
 def _tech_loop():

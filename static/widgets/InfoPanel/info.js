@@ -3,6 +3,35 @@ import { N_FC, fmtVol } from '../../core/utils.js';
 import { PINE_SCRIPTS, pineActive } from '../MainChart/pine.js';
 import { loadForecast } from '../MainChart/chart.js';
 
+// ── TECH TOOLTIP ──────────────────────────────────────────────────────────────
+export function initTechTooltip() {
+  const widget  = document.getElementById("rp-tech");
+  const tooltip = document.getElementById("tech-tooltip");
+  const _pos = (e) => {
+    const pad = 10;
+    let left = e.clientX - tooltip.offsetWidth - pad;
+    if (left < pad) left = e.clientX + pad;
+    tooltip.style.left = left + "px";
+    tooltip.style.top = Math.min(e.clientY - 10, window.innerHeight - tooltip.offsetHeight - pad) + "px";
+  };
+  widget.addEventListener("mouseenter", () => {
+    const d = App._techData;
+    if (!d || !d.indicators) return;
+    const tfs = Object.keys(d.breakdown || {});
+    const inds = d.indicators;
+    const cell = v => v === 1 ? '<td class="tt-bull">▲</td>' : v === -1 ? '<td class="tt-bear">▼</td>' : v === 0 ? '<td class="tt-neut">—</td>' : '<td class="tt-na">·</td>';
+    let html = `<table class="tt-grid"><tr><th></th>${tfs.map(tf => `<th>${tf}</th>`).join("")}</tr>`;
+    for (const [name, votes] of Object.entries(inds)) {
+      html += `<tr><td class="tt-name">${name}</td>${tfs.map(tf => cell(votes[tf])).join("")}</tr>`;
+    }
+    html += "</table>";
+    tooltip.innerHTML = html;
+    tooltip.classList.add("visible");
+  });
+  widget.addEventListener("mousemove", _pos);
+  widget.addEventListener("mouseleave", () => tooltip.classList.remove("visible"));
+}
+
 // ── NEWS TOOLTIP ──────────────────────────────────────────────────────────────
 export function initNewsTooltip() {
   const widget = document.getElementById("rp-news");
@@ -100,6 +129,7 @@ function updateSentimentPanel(s) {
   upd(document.getElementById("rp-tech-dot"), document.getElementById("rp-tech-label"), document.getElementById("rp-tech-ts"), s.tech);
   const bd = Object.entries(s.tech.breakdown || {}).map(([tf, v]) => `${tf}:${v >= 0 ? "+" : ""}${v.toFixed(2)}`).join("  ");
   document.getElementById("rp-tech-detail").textContent = `score:${s.tech.score >= 0 ? "+" : ""}${(s.tech.score || 0).toFixed(2)}  ${bd}`;
+  App._techData = s.tech;
   upd(document.getElementById("rp-fng-dot"), document.getElementById("rp-fng-label"), document.getElementById("rp-fng-ts"), s.fng);
   document.getElementById("rp-fng-detail").textContent = s.fng.value !== null ? `${s.fng.value}/100 — ${s.fng.classification || ""}` : "scanning...";
   App.newsHeadlines = s.news.headlines || [];

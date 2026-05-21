@@ -5,7 +5,7 @@ import { loadMainChart, getMonitorPreset, restorePreset, updateMonitorTabs, draw
 import { loadPineTS, loadPineFileScripts } from '../widgets/MainChart/pine.js';
 import { drawUtility } from '../widgets/UtilityPanel/utility.js';
 import { renderWatchlist, refreshWatchlistMinis, initSidebarResize } from '../widgets/Sidebar/sidebar.js';
-import { initNewsTooltip, initSocialTooltip, scheduleSentiment, scheduleDetails, fetchSocial, scheduleSocial, initIndicatorUI, updateRpContextRow } from '../widgets/InfoPanel/info.js';
+import { initNewsTooltip, initTechTooltip, initSocialTooltip, scheduleSentiment, scheduleDetails, fetchSocial, scheduleSocial, initIndicatorUI, updateRpContextRow } from '../widgets/InfoPanel/info.js';
 import { initPredictions } from '../widgets/Predictions/predictions.js';
 import { initFunding } from '../widgets/FundingOI/funding.js';
 
@@ -52,6 +52,7 @@ async function init() {
   renderWatchlist();
   startClock();
   initNewsTooltip();
+  initTechTooltip();
   initSocialTooltip();
   scheduleSentiment();
   scheduleDetails();
