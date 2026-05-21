@@ -2011,8 +2011,25 @@ function onUtilityYZoom(idx, val) {
   if (p._lastUtilityCandles) drawUtility(p, p._lastUtilityCandles);
 }
 
+// ── LOAD SWING CHART ─────────────────────────────────────────────────────────
+export function loadSwingChart(ticker, tf) {
+  const target = App.panels.find(q => (q.widgetMode || 'candles') === 'candles') || App.panels[0];
+  if (!target) return;
+  target._pineOverlayCache = {};
+  stopPanel(target);
+  target.ticker = ticker;
+  target.tf = tf;
+  target.utilityMode = 'macd';
+  applyTFButtons(target);
+  applyUtilitySelect(target);
+  _startPanelWidget(target);
+  saveMonitorPreset();
+  import('../InfoPanel/info.js').then(m => { m.updateRpContextRow(ticker); m.fetchDetails(ticker); });
+}
+
 // Expose inline-HTML onclick functions
 window.setPanelTF = setPanelTF;
+window.loadSwingChart = loadSwingChart;
 window.setUtilityMode = setUtilityMode;
 window.setLayout = setLayout;
 window.switchMonitor = switchMonitor;

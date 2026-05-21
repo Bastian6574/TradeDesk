@@ -851,7 +851,7 @@ function _renderSwingEntries(p, data) {
     const row = document.createElement('div');
     row.className = 'con-row';
     row.innerHTML =
-      `<span class="con-ts">—</span>` +
+      `<button class="con-goto-btn" onclick="window.loadSwingChart('${e.ticker}','${e.tf}')" title="Load chart · ${e.tf}">↩</button>` +
       `<span class="con-badge" style="color:${color}">${_esc(stars)} [${_esc(e.label)}] ${_esc(e.ticker)}</span>` +
       `<span class="con-detail">${_esc(detail)}</span>` +
       `<span class="con-weight" style="color:${color}80">${score}%</span>`;

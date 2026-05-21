@@ -108,6 +108,21 @@
   transition: width 0.4s ease;
 }
 
+.con-goto-btn {
+  background: none;
+  border: 1px solid #2a3d52;
+  color: #4a7a9b;
+  font-size: 10px;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  z-index: 1;
+  transition: border-color 0.15s, color 0.15s;
+  font-family: var(--font);
+}
+.con-goto-btn:hover { border-color: #4dabf7; color: #4dabf7; }
+
 .con-ts {
   font-family: 'JetBrains Mono', monospace;
   font-size: 8px;
