@@ -1,4 +1,4 @@
-import { App, indicators, syncState, API, LAYOUT_COUNT, getContextTicker } from '../../core/state.js';
+import { App, indicators, syncState, API, LAYOUT_COUNT, getContextTicker, clearContextOverride } from '../../core/state.js';
 import { fmt, fmtVol, LIVE_MAX, N_FC, TF_N_FC, TF_PERIOD, toBinanceSymbol, tfIntervalMs, candleTimeRemaining } from '../../core/utils.js';
 import { PINE_SCRIPTS, pineActive, applyActivePineOverlays, applyPineOverlayToPanel, loadPineTS } from './pine.js';
 import { drawUtility } from '../UtilityPanel/utility.js';
@@ -335,9 +335,10 @@ export function setActivePanel(idx) {
   const ai = document.getElementById("avg-input-" + idx);
   if (ai) ai.value = App.state.averages[p.ticker] || "";
   updateAvgLegend(p);
-  const ctx = getContextTicker();
-  import('../InfoPanel/info.js').then(m => { m.updateRpContextRow(); m.fetchDetails(ctx); });
-  import('../FundingOI/funding.js').then(m => m.fetchFunding(ctx));
+  clearContextOverride();
+  const t = p.ticker;
+  import('../InfoPanel/info.js').then(m => { m.updateRpContextRow(t); m.fetchDetails(t); });
+  import('../FundingOI/funding.js').then(m => m.fetchFunding(t));
 }
 
 // ── MONITOR MANAGEMENT ────────────────────────────────────────────────────────
@@ -398,9 +399,11 @@ export function loadTicker(ticker) {
   stopPanel(p);
   p.ticker = ticker;
   document.querySelectorAll(".watch-item").forEach(el => el.classList.toggle("active", el.id === "wi-" + ticker));
-  loadMainChart(p);
+  _startPanelWidget(p);
   saveMonitorPreset();
-  import('../InfoPanel/info.js').then(m => m.fetchDetails(ticker));
+  clearContextOverride();
+  import('../InfoPanel/info.js').then(m => { m.updateRpContextRow(ticker); m.fetchDetails(ticker); });
+  import('../FundingOI/funding.js').then(m => m.fetchFunding(ticker));
 }
 
 // ── SYNC ALL PANELS TO TICKER ─────────────────────────────────────────────────
@@ -453,6 +456,7 @@ export function stopPanel(p) {
   p._liveCount = 0;
   stopLiquidationMap(p);
   stopLevel2(p);
+  stopConsole(p);
   if (p.mainChart) { p.mainChart.destroy(); p.mainChart = null; }
   if (p.rsiChart) { p.rsiChart.destroy(); p.rsiChart = null; }
   if (p._offlineTimer) { clearTimeout(p._offlineTimer); p._offlineTimer = null; }

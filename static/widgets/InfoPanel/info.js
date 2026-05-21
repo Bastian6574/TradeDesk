@@ -25,8 +25,8 @@ export function initNewsTooltip() {
 }
 
 // ── CONTEXT ROW ───────────────────────────────────────────────────────────────
-export function updateRpContextRow() {
-  const t = getContextTicker();
+export function updateRpContextRow(ticker) {
+  const t = ticker ?? getContextTicker();
   const el = document.getElementById("rp-ctx-ticker");
   if (el) el.textContent = t;
 }
@@ -175,12 +175,20 @@ export async function reloadArima(e) {
 
 window.rpRecalc = function() {
   const t = App.panels[App.activeIdx]?.ticker ?? "BTC";
-  setContextOverride(t);          // pins context for 2 min; timer keeps using t
+  setContextOverride(t);
   const el = document.getElementById("rp-ctx-ticker");
   if (el) el.textContent = t;
   fetchSentiment(t);
   fetchDetails(t);
   import('../FundingOI/funding.js').then(m => m.fetchFunding(t));
+  // Restart any Brain panels on this monitor so they scan the recalc'd ticker
+  App.panels.forEach(p => {
+    if ((p.widgetMode || "candles") === "console" && p.ticker !== t) {
+      p.ticker = t;
+      import('../Console/console.js').then(c => c.startConsole(p));
+    }
+  });
+  import('../MainChart/chart.js').then(m => m.saveMonitorPreset());
 };
 
 // Expose for inline HTML handlers

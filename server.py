@@ -20,7 +20,7 @@ try:
     _ets_ok = True
 except ImportError:
     _ets_ok = False
-import json, os, re, subprocess, time, threading, tempfile
+import json, math, os, re, subprocess, time, threading, tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests as _req
 from datetime import datetime, timezone
@@ -334,7 +334,7 @@ _chart_cache = {}  # key -> (data, expires_at)
 
 _CACHE_TTL = {
     "1m": 5, "5m": 60, "15m": 120,
-    "30m": 120, "1h": 300, "1d": 600
+    "30m": 120, "1h": 300, "1d": 600, "1wk": 3600
 }
 
 def _cache_get(key):
@@ -552,13 +552,19 @@ def fetch_chart_data(ticker, period="5d", interval="30m"):
         df["MA50"] = df["Close"].rolling(50).mean()
         candles = []
         for ts, row in df.iterrows():
+            c = float(row["Close"])
+            if math.isnan(c) or c <= 0:
+                continue
+            def _f(v):
+                v = float(v)
+                return round(c if math.isnan(v) else v, 4)
             candles.append({
                 "t":    int(ts.timestamp() * 1000),
-                "o":    round(float(row["Open"]),  4),
-                "h":    round(float(row["High"]),  4),
-                "l":    round(float(row["Low"]),   4),
-                "c":    round(float(row["Close"]), 4),
-                "v":    int(row["Volume"]),
+                "o":    _f(row["Open"]),
+                "h":    _f(row["High"]),
+                "l":    _f(row["Low"]),
+                "c":    round(c, 4),
+                "v":    int(row["Volume"]) if not math.isnan(float(row["Volume"])) else 0,
                 "ma20": round(float(row["MA20"]), 4) if pd.notna(row["MA20"]) else None,
                 "ma50": round(float(row["MA50"]), 4) if pd.notna(row["MA50"]) else None,
             })
@@ -826,18 +832,37 @@ def get_forecast(ticker):
     _cache_set(cache_key, result, 60)
     return jsonify(result)
 
+_TF_PARAMS = {
+    # (period, interval)  — 1H/1D sliced client-side from the 1W payload
+    "1W": ("5d",  "30m"),   # ~80 half-hour candles; base for 1H/1D slicing too
+    "1M": ("1mo", "1d"),    # ~21 daily candles
+    "3M": ("3mo", "1d"),    # ~63 daily candles
+}
+
 @app.route("/api/mini/batch")
 def mini_batch():
     raw     = request.args.get("t", "")
-    tickers = [t.strip().upper() for t in raw.split(",") if t.strip()][:30]
+    tf             = request.args.get("tf", "1W").upper()
+    period, interval = _TF_PARAMS.get(tf, ("5d", "1h"))
+    tickers = [t.strip().upper() for t in raw.split(",") if t.strip()][:60]
     results = {}
     def _fetch(t):
+        spark = fetch_chart_data(t, period=period, interval=interval)
+        if spark and not spark.get("error") and len(spark.get("candles", [])) >= 2:
+            candles = spark["candles"]
+            first_c = candles[0]["c"]
+            last_c  = candles[-1]["c"]
+            chg     = round((last_c - first_c) / first_c * 100, 2) if first_c else 0
+            if math.isnan(chg) or math.isnan(last_c): chg, last_c = 0.0, 0.0
+            return t, {"last": last_c, "change_pct": chg, "candles": candles}
+        # fallback: daily data
         d = fetch_chart_data(t, period="5d", interval="1d")
-        if d and len(d.get("candles", [])) >= 2:
-            prev  = d["candles"][-2]["c"]
-            last  = d["candles"][-1]["c"]
-            chg   = round((last - prev) / prev * 100, 2) if prev else 0
-            return t, {"last": last, "change_pct": chg}
+        if d and not d.get("error") and len(d.get("candles", [])) >= 2:
+            candles = d["candles"]
+            prev    = candles[-2]["c"]
+            last_c  = candles[-1]["c"]
+            chg     = round((last_c - prev) / prev * 100, 2) if prev else 0
+            return t, {"last": last_c, "change_pct": chg, "candles": candles}
         return t, None
     with ThreadPoolExecutor(max_workers=10) as ex:
         futs = {ex.submit(_fetch, t): t for t in tickers}

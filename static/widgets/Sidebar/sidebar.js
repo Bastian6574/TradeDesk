@@ -1,6 +1,7 @@
 import { App, syncState, API } from '../../core/state.js';
 import { fmt } from '../../core/utils.js';
 import { loadTicker, loadTickerAllPanels } from '../MainChart/chart.js';
+import { renderMiniChart, destroyMiniChart } from '../MiniChart/minichart.js';
 
 let _syncOn = false;
 
@@ -42,14 +43,7 @@ export async function loadMiniChart(ticker) {
     const pos = data.change_pct >= 0;
     chEl.textContent = (pos ? "+" : "") + data.change_pct.toFixed(2) + "%";
     chEl.className = "watch-change " + (pos ? "pos" : "neg");
-    if (App.miniCharts[ticker]) { App.miniCharts[ticker].destroy(); delete App.miniCharts[ticker]; }
-    const canvas = document.getElementById("mc-" + ticker); if (!canvas) return;
-    const color = pos ? "#00d47e" : "#f03e3e";
-    App.miniCharts[ticker] = new Chart(canvas, {
-      type: "line",
-      data: { labels: data.candles.map(() => ""), datasets: [{ data: data.candles.map(c => c.c), borderColor: color, borderWidth: 1.5, pointRadius: 0, fill: true, backgroundColor: color + "18", tension: 0.2 }] },
-      options: { animation: false, responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } }, scales: { x: { display: false }, y: { display: false } } }
-    });
+    renderMiniChart("mc-" + ticker, data.candles, data.change_pct);
   } catch (e) {}
 }
 
@@ -79,7 +73,7 @@ export async function addTicker() {
 export async function removeTicker(ticker, e) {
   e.stopPropagation();
   App.state.watchlist = App.state.watchlist.filter(t => t !== ticker);
-  if (App.miniCharts[ticker]) { App.miniCharts[ticker].destroy(); delete App.miniCharts[ticker]; }
+  destroyMiniChart("mc-" + ticker);
   await fetch(API + "/api/watchlist", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickers: App.state.watchlist }) });
   renderWatchlist();
 }
