@@ -92,6 +92,7 @@ export function buildPanelEl(p) {
       <button class="tf-btn" onclick="setPanelTF(${i},'30m')">30m</button>
       <button class="tf-btn" onclick="setPanelTF(${i},'1h')">1h</button>
       <button class="tf-btn" onclick="setPanelTF(${i},'1d')">D</button>
+      <button class="tf-btn" onclick="setPanelTF(${i},'1wk')">W</button>
       <div class="footer-sep"></div>
       <div class="status-item">O<span class="st-open"  id="st-open-${i}">—</span></div>
       <div class="status-item">H<span class="st-high"  id="st-high-${i}">—</span></div>
@@ -443,7 +444,7 @@ export function applyTFButtons(p) {
   const footer = document.getElementById("chart-footer-" + p.idx); if (!footer) return;
   footer.querySelectorAll(".tf-btn").forEach(b => {
     const lbl = b.textContent.trim().toLowerCase();
-    b.classList.toggle("active", lbl === p.tf.toLowerCase() || (p.tf === "1d" && lbl === "d"));
+    b.classList.toggle("active", lbl === p.tf.toLowerCase() || (p.tf === "1d" && lbl === "d") || (p.tf === "1wk" && lbl === "w"));
   });
 }
 
@@ -879,7 +880,7 @@ function buildChartOptions(p, candles, minP, maxP, isLive, xStart = 0, fixedZoom
       }
     },
     scales: {
-      x: { type: "linear", min: xMin, max: xMax, grid: { color: "#1e253022" }, ticks: { color: "#3d5066", font: { family: "'JetBrains Mono'", size: 9 }, maxTicksLimit: 8, callback: (v) => { const c = candles[Math.round(v) - xStart]; if (!c) return ""; const d = new Date(c.t); return p.tf === "1d" ? d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) : d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }); } } },
+      x: { type: "linear", min: xMin, max: xMax, grid: { color: "#1e253022" }, ticks: { color: "#3d5066", font: { family: "'JetBrains Mono'", size: 9 }, maxTicksLimit: 8, callback: (v) => { const c = candles[Math.round(v) - xStart]; if (!c) return ""; const d = new Date(c.t); if (p.tf === "1wk") return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }); if (p.tf === "1d")  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }); return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }); } } },
       y: { min: p._yMin ?? minP, max: p._yMax ?? maxP, position: "right", grid: { color: "#1e253022" }, ticks: { color: "#6a8099", font: { family: "'JetBrains Mono'", size: 9 }, callback: (v) => fmt(v) } }
     }
   };

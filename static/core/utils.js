@@ -1,7 +1,7 @@
 export const LIVE_MAX  = 500;
 export const N_FC      = 20;
-export const TF_PERIOD = { "1s":null,"1m":"1d","5m":"2d","15m":"5d","30m":"5d","1h":"1mo","1d":"3mo" };
-export const TF_N_FC   = { "5m":12, "15m":16, "30m":24, "1h":24, "1d":14 };
+export const TF_PERIOD = { "1s":null,"1m":"1d","5m":"2d","15m":"5d","30m":"5d","1h":"1mo","1d":"2y","1wk":"5y" };
+export const TF_N_FC   = { "5m":12, "15m":16, "30m":24, "1h":24, "1d":14, "1wk":8 };
 
 export function fmt(v)    { if (v==null) return "—"; return v>=1000?v.toFixed(2):v>=1?v.toFixed(3):v.toFixed(5); }
 export function fmtVol(v) { if (!v) return "—"; if (v>=1e9) return (v/1e9).toFixed(2)+"B"; if (v>=1e6) return (v/1e6).toFixed(2)+"M"; if (v>=1e3) return (v/1e3).toFixed(1)+"K"; return v.toFixed(0); }
@@ -12,7 +12,7 @@ export function toBinanceSymbol(t) {
 }
 
 export function tfIntervalMs(tf) {
-  return {"1m":60000,"5m":300000,"15m":900000,"30m":1800000,"1h":3600000,"1d":86400000}[tf] || 0;
+  return {"1m":60000,"5m":300000,"15m":900000,"30m":1800000,"1h":3600000,"1d":86400000,"1wk":604800000}[tf] || 0;
 }
 
 export function candleTimeRemaining(tf, lastTs) {

@@ -340,7 +340,7 @@ _chart_cache = {}  # key -> (data, expires_at)
 
 _CACHE_TTL = {
     "1m": 5, "5m": 60, "15m": 120,
-    "30m": 120, "1h": 300, "1d": 600, "1wk": 3600
+    "30m": 120, "1h": 300, "1d": 1800, "1wk": 7200
 }
 
 def _cache_get(key):
@@ -1251,7 +1251,8 @@ def static_files(path):
     return no_cache(send_from_directory("static", path))
 
 _PROPHET_CFG = {
-    "1d":  {"period": "2y",  "seasonal": 7,  "n_fc": 14, "max_fit": 500},
+    "1wk": {"period": "10y", "seasonal": 52, "n_fc": 8,  "max_fit": 500},
+    "1d":  {"period": "5y",  "seasonal": 5,  "n_fc": 14, "max_fit": 500},
     "1h":  {"period": "3mo", "seasonal": 24, "n_fc": 24, "max_fit": 500},
     "30m": {"period": "1mo", "seasonal": 48, "n_fc": 24, "max_fit": 500},
     "15m": {"period": "10d", "seasonal": 26, "n_fc": 16, "max_fit": 400},
