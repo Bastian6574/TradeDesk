@@ -60,6 +60,7 @@ export function buildPanelEl(p) {
       <canvas id="main-canvas-${i}"></canvas>
       <div class="loading hidden" id="loading-${i}"><span class="spinner"></span>LOADING</div>
     </div>
+    <div class="utility-resizer" id="utility-resizer-${i}"></div>
     <div class="utility-panel" id="utility-panel-${i}" style="height:${App.state.utility_height || 90}px;">
       <div class="utility-header">
         <select class="utility-select" id="utility-select-${i}" onchange="setUtilityMode(${i},this.value)">
@@ -215,6 +216,49 @@ export function initPanelEvents(p) {
   });
   document.addEventListener("mousemove", _onMove);
   document.addEventListener("mouseup", _onUp);
+
+  // Pan offset callback used by utility.js to sync main chart X axis
+  p._applyPanOffset = (offset) => {
+    p._xOffset = offset;
+    if (!p._panLocked) { p._panLocked = true; _showResetBtn(p); }
+    _updateChartView(p);
+  };
+
+  // Utility panel resize drag handle
+  const _resizer = document.getElementById("utility-resizer-" + p.idx);
+  const _utPanel = document.getElementById("utility-panel-" + p.idx);
+  if (_resizer && _utPanel) {
+    let _rDrag = false, _rStartY = 0, _rStartH = 0, _rAF = null;
+    _resizer.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      _rDrag = true; _rStartY = e.clientY; _rStartH = _utPanel.offsetHeight;
+      document.body.style.cursor = "row-resize";
+    });
+    document.addEventListener("mousemove", (e) => {
+      if (!_rDrag) return;
+      const dy = _rStartY - e.clientY; // drag up = grow utility
+      const newH = Math.max(50, Math.min(400, _rStartH + dy));
+      _utPanel.style.height = newH + "px";
+      if (!p.widgetSettings) p.widgetSettings = {};
+      p.widgetSettings.utilityHeight = newH;
+      if (_rAF) return;
+      _rAF = requestAnimationFrame(() => {
+        _rAF = null;
+        if (p.rsiChart) { p.rsiChart.destroy(); p.rsiChart = null; }
+        if (p.tf === "1s") {
+          if (p.liveCandles.length) drawLiveChart(p, p.liveCandles[p.liveCandles.length - 1].c);
+          if (p._lastUtilityCandles) drawUtility(p, p._lastUtilityCandles);
+        } else if (p.candleData) {
+          drawMainChart(p, p.candleData);
+          if (p.candleData._liveCandles) drawUtility(p, p.candleData._liveCandles);
+        }
+      });
+    });
+    document.addEventListener("mouseup", () => {
+      if (_rDrag) { _rDrag = false; document.body.style.cursor = ""; }
+    });
+  }
 }
 
 // ── LAYOUT MANAGEMENT ─────────────────────────────────────────────────────────

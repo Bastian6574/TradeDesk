@@ -13,13 +13,13 @@ function _extras(p) {
 }
 import { PINE_SCRIPTS, pineActive, loadPineTS, getCustomScript } from '../MainChart/pine.js';
 
-// ── Y-AXIS DRAG ───────────────────────────────────────────────────────────────
+// ── Y-AXIS DRAG + X PAN ───────────────────────────────────────────────────────
 function _ensureYDrag(p) {
   const wrap = document.getElementById("utility-canvas-wrap-" + p.idx);
   if (!wrap || wrap._yDragBound) return;
   wrap._yDragBound = true;
 
-  let startY = null, startZoom = 1.0;
+  let startX = null, startY = null, startZoom = 1.0, startOff = 0, _isYDrag = false;
 
   const _onYAxis = (e) => {
     const canvas = document.getElementById("utility-canvas-" + p.idx);
@@ -29,14 +29,17 @@ function _ensureYDrag(p) {
   };
 
   wrap.addEventListener("mousedown", (e) => {
-    if (e.button !== 0 || !_onYAxis(e)) return;
+    if (e.button !== 0) return;
     e.preventDefault();
-    startY = e.clientY;
+    _isYDrag = _onYAxis(e);
+    startX = e.clientX; startY = e.clientY;
     startZoom = p.widgetSettings?.utilityYZoom ?? 1.0;
+    startOff = p._xOffset || 0;
   });
 
   wrap.addEventListener("mousemove", (e) => {
-    wrap.style.cursor = _onYAxis(e) ? "ns-resize" : "";
+    if (startY !== null) return; // active drag — let window handler own cursor
+    wrap.style.cursor = _onYAxis(e) ? "ns-resize" : "grab";
   });
 
   wrap.addEventListener("dblclick", (e) => {
@@ -48,14 +51,27 @@ function _ensureYDrag(p) {
 
   window.addEventListener("mousemove", (e) => {
     if (startY === null) return;
-    const dy = startY - e.clientY;                      // up = positive = zoom in
-    const zoom = Math.max(1.0, Math.min(12, startZoom * Math.pow(1.018, dy)));
-    if (!p.widgetSettings) p.widgetSettings = {};
-    p.widgetSettings.utilityYZoom = zoom;
-    drawUtility(p, p._lastUtilityCandles);
+    if (_isYDrag) {
+      wrap.style.cursor = "ns-resize";
+      const dy = startY - e.clientY;
+      const zoom = Math.max(1.0, Math.min(12, startZoom * Math.pow(1.018, dy)));
+      if (!p.widgetSettings) p.widgetSettings = {};
+      p.widgetSettings.utilityYZoom = zoom;
+      drawUtility(p, p._lastUtilityCandles);
+    } else {
+      wrap.style.cursor = "grabbing";
+      const candles = p._lastUtilityCandles;
+      if (!candles || !p.mainChart?.chartArea) return;
+      const chartW = p.mainChart.chartArea.right - p.mainChart.chartArea.left;
+      const ppc = chartW / Math.max(1, p.chartZoom);
+      const dx = e.clientX - startX;
+      const maxOff = candles.length - Math.min(p.chartZoom, candles.length);
+      const newOff = Math.max(-(_extras(p) + 5), Math.min(maxOff, startOff + dx / ppc));
+      p._applyPanOffset?.(newOff);
+    }
   });
 
-  window.addEventListener("mouseup", () => { startY = null; });
+  window.addEventListener("mouseup", () => { startY = null; startX = null; wrap.style.cursor = ""; });
 }
 
 export function drawUtility(p, candles) {
@@ -93,10 +109,10 @@ export function drawRSI(p, candles) {
   const rsiXMax = isLive1s ? p.chartZoom - 0.7 : n - xOff - 0.7 + _extras(p);
   const yZoom = p.widgetSettings?.utilityYZoom || 1.0;
   let rsiYMin = 0, rsiYMax = 100;
-  if (yZoom > 1.01 && lastRSI !== undefined) {
+  if (yZoom > 1.01) {
     const half = 50 / yZoom;
-    rsiYMin = Math.max(0, lastRSI - half);
-    rsiYMax = Math.min(100, lastRSI + half);
+    rsiYMin = Math.max(0, 50 - half);
+    rsiYMax = Math.min(100, 50 + half);
   }
   if (p.rsiChart && document.contains(p.rsiChart.canvas)) {
     p.rsiChart.data.datasets[0].data = rsiVals.map((v, i) => ({ x: xStart + i, y: v }));
@@ -176,9 +192,9 @@ export function drawMACD(p, candles) {
   if (yZoom > 1.01) {
     const allVals = [...macdLine, ...signal, ...hist].filter(v => v != null && isFinite(v));
     if (allVals.length) {
-      const center = (Math.min(...allVals) + Math.max(...allVals)) / 2;
-      const half = (Math.max(...allVals) - Math.min(...allVals)) / 2 / yZoom * 1.1;
-      macdYMin = center - half; macdYMax = center + half;
+      const extent = Math.max(Math.abs(Math.min(...allVals)), Math.abs(Math.max(...allVals)));
+      const half = extent / yZoom * 1.1;
+      macdYMin = -half; macdYMax = half;
     }
   }
   if (p.rsiChart && document.contains(p.rsiChart.canvas)) {
