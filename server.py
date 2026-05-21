@@ -811,6 +811,273 @@ def get_daily_forecast(ticker):
         return jsonify({"error": str(e)}), 500
 
 
+SWING_CACHE_FILE = "swing_watchlist.json"
+SWING_FILE_TTL   = 86400   # 24h
+SWING_MEM_TTL    = 3600    # 1h
+
+
+def _compute_swing_technicals(ticker, interval, period):
+    d = fetch_chart_data(ticker, period, interval)
+    if not d or len(d.get("candles", [])) < 30:
+        return None
+    candles = d["candles"]
+    closes  = [c["c"] for c in candles]
+    highs   = [c["h"] for c in candles]
+    vols    = [c.get("v", 0) or 0 for c in candles]
+    price   = closes[-1]
+
+    rsi = float(_compute_rsi(_np.array(closes)))
+
+    e12       = _ema_series(closes, 12)
+    e26       = _ema_series(closes, 26)
+    macd_line = e12 - e26
+    sig_line  = _ema_series(list(macd_line), 9)
+    hist      = macd_line - sig_line
+    macd_hist    = float(hist[-1])
+    macd_hist_p1 = float(hist[-2]) if len(hist) >= 2 else macd_hist
+    macd_hist_p2 = float(hist[-3]) if len(hist) >= 3 else macd_hist_p1
+    macd_cross   = bool(macd_hist_p1 < 0 and macd_hist >= 0)
+
+    ema50_arr  = _ema_series(closes, 50)
+    ema50      = float(ema50_arr[-1])
+    dist_ema50_pct = (price - ema50) / ema50 * 100
+
+    ema200     = None
+    dist_ema200_pct = None
+    if len(closes) >= 200:
+        ema200_arr  = _ema_series(closes, 200)
+        ema200      = float(ema200_arr[-1])
+        dist_ema200_pct = (price - ema200) / ema200 * 100
+
+    period_len = min(52, len(closes))
+    low_52w    = min(closes[-period_len:])
+    dist_52w_low_pct = (price - low_52w) / low_52w * 100 if low_52w > 0 else 0.0
+
+    high_20    = max(highs[-20:]) if len(highs) >= 20 else max(highs)
+    drawdown_20_pct = (price - high_20) / high_20 * 100 if high_20 > 0 else 0.0
+
+    vol_exhaustion = False
+    vol_ratio      = 1.0
+    if len(vols) >= 20:
+        mean20     = sum(vols[-20:]) / 20
+        recent3    = sum(vols[-3:]) / 3 if sum(vols[-3:]) > 0 else 0
+        peak10     = max(vols[-10:])
+        if mean20 > 0:
+            vol_ratio = recent3 / mean20
+            vol_exhaustion = bool(peak10 > mean20 * 2.5 and vol_ratio < 0.6)
+
+    return {
+        "rsi":              rsi,
+        "macd_hist":        macd_hist,
+        "macd_hist_p1":     macd_hist_p1,
+        "macd_hist_p2":     macd_hist_p2,
+        "macd_cross":       macd_cross,
+        "ema50":            ema50,
+        "ema200":           ema200,
+        "dist_ema50_pct":   dist_ema50_pct,
+        "dist_ema200_pct":  dist_ema200_pct,
+        "dist_52w_low_pct": dist_52w_low_pct,
+        "drawdown_20_pct":  drawdown_20_pct,
+        "vol_exhaustion":   vol_exhaustion,
+        "vol_ratio":        vol_ratio,
+        "price":            price,
+    }
+
+
+def _score_swing_entry(tech):
+    score   = 0
+    signals = []
+
+    rsi = tech["rsi"]
+    if rsi <= 25:
+        score += 30; signals.append(f"RSI {rsi:.0f} DEEPLY OVERSOLD")
+    elif rsi <= 30:
+        score += 25; signals.append(f"RSI {rsi:.0f} OVERSOLD")
+    elif rsi <= 35:
+        score += 15; signals.append(f"RSI {rsi:.0f} approaching oversold")
+    elif rsi <= 40:
+        score += 7;  signals.append(f"RSI {rsi:.0f}")
+
+    h0, h1, h2 = tech["macd_hist"], tech["macd_hist_p1"], tech["macd_hist_p2"]
+    if tech["macd_cross"]:
+        score += 28; signals.append("MACD CROSS UP")
+    elif h0 < 0 and h0 > h1 > h2:
+        score += 18; signals.append("MACD hist 2-bar reversal")
+    elif h0 < 0 and h0 > h1:
+        score += 10; signals.append("MACD hist turning up")
+
+    d200 = tech["dist_ema200_pct"]
+    if d200 is not None:
+        if -3 <= d200 <= 1:
+            score += 15; signals.append("Near EMA200")
+        elif -10 <= d200 < -3:
+            score += 8;  signals.append(f"Below EMA200 {d200:.1f}%")
+
+    d50 = tech["dist_ema50_pct"]
+    if -2 <= d50 <= 1:
+        score += 8; signals.append("Near EMA50")
+
+    if tech["vol_exhaustion"]:
+        score += 10; signals.append(f"Volume exhaustion ({tech['vol_ratio']:.2f}x)")
+
+    dd = tech["drawdown_20_pct"]
+    if dd < -15:
+        score += 12; signals.append(f"Deep pullback {dd:.1f}%")
+    elif dd < -8:
+        score += 7;  signals.append(f"Pullback {dd:.1f}%")
+
+    d52 = tech["dist_52w_low_pct"]
+    if d52 < 5:
+        score += 10; signals.append(f"Near 52w low (+{d52:.1f}%)")
+    elif d52 < 15:
+        score += 4;  signals.append(f"52w low +{d52:.1f}%")
+
+    return (min(score, 100), signals)
+
+
+def _claude_swing_analysis(ticker, tf, tech, signals):
+    if not ANTHROPIC_API_KEY:
+        return None
+    try:
+        news_items = []
+        try:
+            raw_news = yf.Ticker(ticker).news or []
+            for item in raw_news[:5]:
+                title = item.get("title", "")
+                if title:
+                    news_items.append(title)
+        except Exception:
+            pass
+
+        news_str = "\n".join(f"- {h}" for h in news_items) if news_items else "No recent headlines."
+        sig_str  = ", ".join(signals[:6])
+        prompt = (
+            f"Ticker: {ticker} | Timeframe: {tf} | Price: {tech['price']:.2f}\n"
+            f"Technical signals: {sig_str}\n"
+            f"RSI: {tech['rsi']:.1f} | MACD hist: {tech['macd_hist']:.4f} | "
+            f"Drawdown 20-bar: {tech['drawdown_20_pct']:.1f}% | "
+            f"Dist EMA50: {tech['dist_ema50_pct']:.1f}%\n"
+            f"Recent headlines:\n{news_str}\n\n"
+            "You are a swing trading analyst. Assess this potential swing entry setup.\n"
+            "Respond with a JSON object only (no markdown):\n"
+            '{"conviction":"LOW|MEDIUM|HIGH","setup_quality":"1-sentence",'
+            '"entry_window":"e.g. 2-3 days","confirm_level":"price or condition",'
+            '"invalidate":"what breaks the setup","news_risk":"LOW|MEDIUM|HIGH"}'
+        )
+        r = _req.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 300,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=15,
+        )
+        if not r.ok:
+            return None
+        text = r.json().get("content", [{}])[0].get("text", "")
+        start = text.find("{"); end = text.rfind("}") + 1
+        if start >= 0 and end > start:
+            return json.loads(text[start:end])
+    except Exception:
+        pass
+    return None
+
+
+def _run_swing_scan():
+    state     = load_state()
+    watchlist = [t for t in (state.get("watchlist") or []) if t not in CRYPTO_TICKERS]
+    if not watchlist:
+        return {"entries": {}, "watchlist": [], "ts": time.time()}
+
+    TF_CFGS = [
+        {"tf": "1h",  "period": "3mo", "tier": "risky",  "section": "st", "min_score": 58, "label": "1H"},
+        {"tf": "1d",  "period": "2y",  "tier": "great",  "section": "lt", "min_score": 48, "label": "1D"},
+        {"tf": "1wk", "period": "5y",  "tier": "superb", "section": "lt", "min_score": 42, "label": "1W"},
+    ]
+
+    tasks = [(ticker, cfg) for ticker in watchlist for cfg in TF_CFGS]
+    entries = {}
+
+    def _scan_one(ticker, cfg):
+        try:
+            tech = _compute_swing_technicals(ticker, cfg["tf"], cfg["period"])
+            if tech is None:
+                return None
+            score, signals = _score_swing_entry(tech)
+            if score < cfg["min_score"]:
+                return None
+            ai = None
+            if score >= 58:
+                try:
+                    ai = _claude_swing_analysis(ticker, cfg["tf"], tech, signals)
+                except Exception:
+                    pass
+            return (ticker, cfg["tf"], {
+                "score":   score,
+                "signals": signals,
+                "tech":    tech,
+                "tier":    cfg["tier"],
+                "section": cfg["section"],
+                "tf":      cfg["tf"],
+                "label":   cfg["label"],
+                "ai":      ai,
+            })
+        except Exception:
+            return None
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        futures = {ex.submit(_scan_one, ticker, cfg): (ticker, cfg) for ticker, cfg in tasks}
+        for fut in as_completed(futures):
+            result = fut.result()
+            if result is None:
+                continue
+            ticker, tf, entry = result
+            if ticker not in entries:
+                entries[ticker] = {}
+            entries[ticker][tf] = entry
+
+    return {
+        "entries":   entries,
+        "watchlist": watchlist,
+        "ts":        time.time(),
+        "scan_date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+    }
+
+
+@app.route("/api/swing_scan")
+def get_swing_scan():
+    force = request.args.get("force", "0") == "1"
+    if not force:
+        cached = _cache_get(("swing_scan",))
+        if cached is not None:
+            return jsonify(cached)
+        try:
+            with open(SWING_CACHE_FILE, "r") as f:
+                file_data = json.load(f)
+            if time.time() - file_data.get("ts", 0) < SWING_FILE_TTL:
+                _cache_set(("swing_scan",), file_data, SWING_MEM_TTL)
+                return jsonify(file_data)
+        except Exception:
+            pass
+    try:
+        result = _run_swing_scan()
+        try:
+            with open(SWING_CACHE_FILE, "w") as f:
+                json.dump(result, f)
+        except Exception:
+            pass
+        _cache_set(("swing_scan",), result, SWING_MEM_TTL)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 def _stock_sentiment(ticker):
     now_str = datetime.now().strftime("%H:%M")
     # TECH: RSI + MACD across 1h and 1d

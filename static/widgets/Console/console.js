@@ -7,6 +7,9 @@ const COOLDOWN  = 300_000; // 5-min per signal key
 const _cache    = new Map(); // ticker_tf → { ts, data }
 const _outlined = new Map(); // panelIdx → { color, ts, clearTimer }
 
+let _swingData  = null;   // last fetched swing scan result
+let _swingFetch = 0;      // timestamp of last fetch
+
 const TFS = [
   { tf: '15m', period: '5d',  interval: '15m', ttl:  60_000, section: 'st' },
   { tf: '30m', period: '10d', interval: '30m', ttl: 120_000, section: 'st' },
@@ -32,6 +35,7 @@ export function startConsole(p) {
   p._conPrevLtState    = null;
   p._conPrevSocialLabel = null;
   _emit(p, '#6a8099', 'SYS', `monitoring ${p.ticker} · scanning 15m 30m 1h 1d`, null, null, 'st');
+  setTimeout(() => _checkSwingEntries(p), 2000); // defer so Brain initialises first
   _runScan(p);
   p._conTimer = setInterval(() => _runScan(p), SCAN_MS);
 }
@@ -72,6 +76,9 @@ const _GUIDE = [
   { badge: '⚠⚠⚠ SELL BREAK [TICKER]', color: '#f03e3e', desc: 'Price just broke BELOW your set average. Key support level lost.' },
   { badge: '◆ AVG BREAK ↑ [TICKER]',   color: '#00d47e', desc: 'Price below your average with bullish momentum. Probability-weighted chance of reclaiming your cost basis.' },
   { badge: '◆◆ AVG RECLAIM [TICKER]',  color: '#00d47e', desc: 'Price just reclaimed your set average. Key resistance level recovered.' },
+  { badge: '◆ [1H] TICKER RISKY ENTRY',   color: '#4dabf7', desc: '1-hour timeframe swing setup. RSI/MACD/volume confluence. High-risk, fast-moving entry — confirm before trading.' },
+  { badge: '◆◆ [1D] TICKER GREAT ENTRY',  color: '#a9e34b', desc: 'Daily timeframe swing setup. Strong technical confluence. Good risk/reward entry point for medium-term swing.' },
+  { badge: '◆◆◆ [1W] TICKER SUPERB ENTRY',color: '#ffd43b', desc: 'Weekly timeframe setup. Rare, high-conviction long-term entry. Best risk/reward — consider larger position.' },
 ];
 
 // ── DOM ───────────────────────────────────────────────────────────────────────
@@ -110,6 +117,15 @@ function _buildDOM(p) {
     </div>
     <div class="con-log con-log-lt" id="con-log-lt-${p.idx}"></div>
 
+    <div class="con-section-hdr con-sw-hdr">
+      <span class="con-section-title">SWING WATCH</span>
+      <span class="con-section-dot">··</span>
+      <span class="con-section-state" id="con-sw-state-${p.idx}">WATCHLIST</span>
+      <button class="con-scan-btn" id="con-scan-btn-${p.idx}"
+        onclick="window._conSwingScan(${p.idx})">⟳ SCAN</button>
+    </div>
+    <div class="con-log con-log-sw" id="con-log-sw-${p.idx}"></div>
+
     <div class="con-section-hdr">
       <span class="con-section-title">SHORTTERM TREND</span>
       <span class="con-section-dot">··</span>
@@ -130,7 +146,7 @@ function _buildDOM(p) {
 
 // ── EMIT ──────────────────────────────────────────────────────────────────────
 function _emit(p, color, badge, detail, weight, direction, section = 'st') {
-  const logId = section === 'lt' ? `con-log-lt-${p.idx}` : `con-log-st-${p.idx}`;
+  const logId = section === 'lt' ? `con-log-lt-${p.idx}` : section === 'sw' ? `con-log-sw-${p.idx}` : `con-log-st-${p.idx}`;
   const log = document.getElementById(logId);
   if (!log) return;
   const ts  = new Date().toTimeString().slice(0, 8);
@@ -322,12 +338,26 @@ window._conRunCmd = function(idx) {
   _emit(p, '#4dabf7', 'SYS', 'command input active — AI integration coming soon', null, null, 'st');
 };
 
+window._conSwingScan = async function(idx) {
+  const p = App.panels.find(q => q.idx === idx); if (!p) return;
+  const btn = document.getElementById('con-scan-btn-' + idx);
+  if (btn) { btn.textContent = '⟳ …'; btn.disabled = true; }
+  await _checkSwingEntries(p, true);
+  if (btn) { btn.textContent = '⟳ SCAN'; btn.disabled = false; }
+};
+
 // ── SCAN ──────────────────────────────────────────────────────────────────────
 async function _runScan(p) {
   if (!p._conActive) return;
   const ticker = p.ticker;
   const now    = Date.now();
   const sigs   = [];
+
+  // Re-check swing entries every hour
+  if (!p._swingLastCheck || Date.now() - p._swingLastCheck > 3_600_000) {
+    p._swingLastCheck = Date.now();
+    _checkSwingEntries(p).catch(() => {});
+  }
 
   try { _detectIceberg(ticker).forEach(s => sigs.push(s)); } catch(_e) {}
 
@@ -670,6 +700,96 @@ function _detectMABounce(candles, cfg) {
         autoAction:{ type:'chart', tf:cfg.tf, utility:'macd' } });
   }
   return out;
+}
+
+// ── SWING ENTRY SCANNER ───────────────────────────────────────────────────────
+async function _checkSwingEntries(p, force = false) {
+  const now = Date.now();
+  if (!force && _swingData && (now - _swingFetch) < 3_600_000) {
+    _renderSwingEntries(p, _swingData);
+    return;
+  }
+  try {
+    const res = await fetch(`/api/swing_scan${force ? '?force=1' : ''}`);
+    if (!res.ok) return;
+    _swingData = await res.json();
+    _swingFetch = Date.now();
+    _renderSwingEntries(p, _swingData);
+  } catch (_e) {}
+}
+
+function _renderSwingEntries(p, data) {
+  const log = document.getElementById('con-log-sw-' + p.idx);
+  if (!log) return;
+  log.innerHTML = '';
+
+  const entries = data?.entries || {};
+  const date    = data?.scan_date || '—';
+  const wl      = (data?.watchlist || []).join(' · ');
+
+  _emitRaw(log, '#2a3340', `SCAN ${date}`, wl || 'no tickers');
+
+  const all = [];
+  for (const [ticker, tfs] of Object.entries(entries)) {
+    for (const [tf, info] of Object.entries(tfs)) {
+      all.push({ ticker, ...info });
+    }
+  }
+  all.sort((a, b) => b.score - a.score);
+
+  if (!all.length) {
+    _emitRaw(log, '#3d5066', 'NO SETUPS', 'no watchlist tickers meet entry threshold');
+    return;
+  }
+
+  for (const e of all) {
+    const color  = e.tier === 'superb' ? '#ffd43b' : e.tier === 'great' ? '#a9e34b' : '#4dabf7';
+    const stars  = e.tier === 'superb' ? '◆◆◆' : e.tier === 'great' ? '◆◆' : '◆';
+    const ai     = e.ai;
+    const conv   = ai?.conviction  ? ` · AI:${ai.conviction}` : '';
+    const ew     = ai?.entry_window ? ` · ${ai.entry_window}` : '';
+    const detail = `${e.signals.slice(0,3).join(' · ')}${conv}${ew}`;
+    const score  = e.score;
+
+    const row = document.createElement('div');
+    row.className = 'con-row';
+    row.innerHTML =
+      `<span class="con-ts">—</span>` +
+      `<span class="con-badge" style="color:${color}">${_esc(stars)} [${_esc(e.label)}] ${_esc(e.ticker)}</span>` +
+      `<span class="con-detail">${_esc(detail)}</span>` +
+      `<span class="con-weight" style="color:${color}80">${score}%</span>`;
+    log.appendChild(row);
+    if (log.children.length > LOG_MAX) log.removeChild(log.firstChild);
+
+    if (score >= 68) {
+      const ck  = `swing_${e.ticker}_${e.tf}`;
+      const now = Date.now();
+      if ((p._conCooldowns.get(ck) || 0) <= now) {
+        p._conCooldowns.set(ck, now + 14_400_000); // 4h cooldown
+        const sec = e.section || (e.tf === '1h' ? 'st' : 'lt');
+        const riskLabel = e.tier === 'superb' ? 'SUPERB ENTRY' : e.tier === 'great' ? 'GREAT ENTRY' : 'RISKY ENTRY';
+        _emit(p, color, `${stars} [${e.label}] ${e.ticker}`,
+          `${riskLabel} · ${e.signals.slice(0,2).join(' · ')}${conv}`,
+          score, 'bull', sec);
+        if (ai?.setup_quality) {
+          _emit(p, `${color}80`, '  ↳ AI', ai.setup_quality +
+            (ai.entry_window ? `  ·  entry ${ai.entry_window}` : '') +
+            (ai.confirm_level ? `  ·  confirm: ${ai.confirm_level}` : ''),
+            null, null, sec);
+        }
+      }
+    }
+  }
+}
+
+function _emitRaw(log, color, badge, detail) {
+  const row = document.createElement('div');
+  row.className = 'con-row';
+  row.innerHTML =
+    `<span class="con-ts">—</span>` +
+    `<span class="con-badge" style="color:${color}">${_esc(badge)}</span>` +
+    `<span class="con-detail">${_esc(detail)}</span>`;
+  log.appendChild(row);
 }
 
 // ── AVERAGE BREAK FORECAST ────────────────────────────────────────────────────

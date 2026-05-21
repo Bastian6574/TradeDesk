@@ -282,3 +282,23 @@
   transition: color 0.15s;
 }
 .con-cmd-send:hover { color: #4dabf7; }
+
+/* ── SWING SCAN BUTTON ── */
+.con-scan-btn {
+  margin-left: auto;
+  background: none;
+  border: 1px solid #2a3545;
+  color: #3d5066;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 1px 7px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.con-scan-btn:hover    { border-color: #a9e34b; color: #a9e34b; }
+.con-scan-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* ── SWING WATCH LOG ── */
+.con-log.con-log-sw { flex: 1.2; border-bottom: 1px solid var(--border); }
