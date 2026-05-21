@@ -116,6 +116,7 @@ function _buildDOM(p) {
       <span class="con-section-summary" id="con-lt-summary-${p.idx}"></span>
     </div>
     <div class="con-log con-log-lt" id="con-log-lt-${p.idx}"></div>
+    <div class="con-resizer" id="con-resizer-1-${p.idx}"></div>
 
     <div class="con-section-hdr con-sw-hdr">
       <span class="con-section-title">SWING WATCH</span>
@@ -125,6 +126,7 @@ function _buildDOM(p) {
         onclick="window._conSwingScan(${p.idx})">⟳ SCAN</button>
     </div>
     <div class="con-log con-log-sw" id="con-log-sw-${p.idx}"></div>
+    <div class="con-resizer" id="con-resizer-2-${p.idx}"></div>
 
     <div class="con-section-hdr">
       <span class="con-section-title">SHORTTERM TREND</span>
@@ -142,6 +144,42 @@ function _buildDOM(p) {
       <button class="con-cmd-send" onclick="window._conRunCmd(${p.idx})">▶</button>
     </div>
   `;
+  _initResizers(p);
+}
+
+function _initResizers(p) {
+  const idx = p.idx;
+  [[1, 'con-log-lt', 'con-log-sw'], [2, 'con-log-sw', 'con-log-st']].forEach(([n, aboveId, belowId]) => {
+    const r = document.getElementById(`con-resizer-${n}-${idx}`);
+    if (!r) return;
+    r.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const above = document.getElementById(`${aboveId}-${idx}`);
+      const below = document.getElementById(`${belowId}-${idx}`);
+      const startY = e.clientY;
+      const startH1 = above.getBoundingClientRect().height;
+      const startH2 = below.getBoundingClientRect().height;
+      above.style.flex = `0 0 ${startH1}px`;
+      below.style.flex = `0 0 ${startH2}px`;
+      const MIN = 30;
+      let raf = null;
+      const onMove = (me) => {
+        if (raf) return;
+        raf = requestAnimationFrame(() => {
+          raf = null;
+          const dy = me.clientY - startY;
+          above.style.flex = `0 0 ${Math.max(MIN, startH1 + dy)}px`;
+          below.style.flex = `0 0 ${Math.max(MIN, startH2 - dy)}px`;
+        });
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
 }
 
 // ── EMIT ──────────────────────────────────────────────────────────────────────

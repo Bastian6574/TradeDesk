@@ -74,6 +74,10 @@
 .con-log.con-log-lt { flex: 2; }
 .con-log.con-log-st { flex: 3; }
 
+/* ── SECTION RESIZERS ── */
+.con-resizer { height: 5px; flex-shrink: 0; cursor: row-resize; background: var(--border); transition: background 0.15s; }
+.con-resizer:hover { background: var(--blue); }
+
 .con-log::-webkit-scrollbar       { width: 6px; }
 .con-log::-webkit-scrollbar-track { background: #0a0e14; }
 .con-log::-webkit-scrollbar-thumb { background: #3d5575; border-radius: 3px; }
