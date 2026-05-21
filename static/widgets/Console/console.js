@@ -392,6 +392,17 @@ async function _cmdAnalyze(p, ticker) {
     const aD = d.action === 'BUY' ? 'bull'    : d.action === 'SELL' ? 'bear'    : null;
     const cD = d.conviction === 'HIGH' ? '●●●' : d.conviction === 'MEDIUM' ? '●●○' : '●○○';
     _emit(p, aC,          `◎ ${d.action} ${ticker}`, `${cD} ${d.conviction} conviction  ·  $${d.price}`, 80, aD, 'st');
+    { const _tfMap = { weekly:'1wk', daily:'1d', intraday:'1h', hourly:'1h' };
+      const _chartTf = _tfMap[(d.timeframe_bias||'').toLowerCase()] || '1d';
+      const _stLog = document.getElementById(`con-log-st-${p.idx}`);
+      if (_stLog?.lastChild) {
+        const _btn = document.createElement('button');
+        _btn.className = 'con-goto-btn'; _btn.textContent = '↩';
+        _btn.title = `Load chart · ${ticker} · ${_chartTf}`;
+        _btn.onclick = () => window.loadSwingChart(ticker, _chartTf);
+        _stLog.lastChild.prepend(_btn);
+      }
+    }
     if (d.summary)        _emit(p, '#c8d8e8',    '  ↳',      d.summary,    null, null, 'st');
     if (d.avg_price != null) {
       const pc = d.pnl_pct >= 0 ? '#00d47e' : '#f03e3e';
