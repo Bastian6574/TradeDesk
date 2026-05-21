@@ -1881,6 +1881,350 @@ def list_pine_scripts():
             pass
     return jsonify(scripts)
 
+# ══════════════════════════════════════════════════════════════════════════════
+# TRADING BOT SIMULATOR
+# ══════════════════════════════════════════════════════════════════════════════
+PORTFOLIO_FILE  = "virtual_portfolio.json"
+_portfolio_lock = threading.Lock()
+_bot_thread     = None
+_bot_stop_evt   = threading.Event()
+
+_DEFAULT_PORTFOLIO = {
+    "capital":         10_000.0,
+    "initial_capital": 10_000.0,
+    "positions":       [],
+    "closed_trades":   [],
+    "stats": {
+        "total_trades":   0,
+        "winning_trades": 0,
+        "total_pnl_usd":  0.0,
+        "win_rate":       0.0,
+        "peak_capital":   10_000.0,
+        "max_drawdown":   0.0,
+    },
+    "bot_active": False,
+    "last_eval":  None,
+    "log":        [],
+}
+
+# ── Portfolio I/O ──────────────────────────────────────────────────────────────
+def _port_read():
+    with _portfolio_lock:
+        if not os.path.exists(PORTFOLIO_FILE):
+            return json.loads(json.dumps(_DEFAULT_PORTFOLIO))
+        try:
+            with open(PORTFOLIO_FILE) as f:
+                data = json.load(f)
+            for k, v in _DEFAULT_PORTFOLIO.items():
+                data.setdefault(k, json.loads(json.dumps(v)))
+            return data
+        except Exception:
+            return json.loads(json.dumps(_DEFAULT_PORTFOLIO))
+
+def _port_write(port):
+    with _portfolio_lock:
+        tmp = PORTFOLIO_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(port, f, indent=2)
+        os.replace(tmp, PORTFOLIO_FILE)
+
+def _port_log(port, msg):
+    ts = datetime.now().strftime("%m-%d %H:%M")
+    port["log"].insert(0, {"ts": ts, "msg": msg})
+    port["log"] = port["log"][:100]
+
+# ── Market hours (US Eastern) ──────────────────────────────────────────────────
+def _is_market_hours():
+    try:
+        import pytz
+        et  = pytz.timezone("US/Eastern")
+        now = datetime.now(et)
+        if now.weekday() >= 5:
+            return False
+        mo = now.replace(hour=9,  minute=30, second=0, microsecond=0)
+        mc = now.replace(hour=15, minute=30, second=0, microsecond=0)
+        return mo <= now <= mc
+    except Exception:
+        return True  # assume open if pytz unavailable
+
+# ── Price helper ───────────────────────────────────────────────────────────────
+def _bot_price(ticker):
+    try:
+        cached = _cache_get(f"price:{resolve_ticker(ticker)}")
+        if cached and cached.get("last"):
+            return float(cached["last"])
+        fi = yf.Ticker(resolve_ticker(ticker)).fast_info
+        return float(fi.last_price or 0)
+    except Exception:
+        return 0.0
+
+def _bot_portfolio_value(port):
+    total = port["capital"]
+    for pos in port["positions"]:
+        p = _bot_price(pos["ticker"])
+        total += (p * pos["shares"]) if p > 0 else pos["cost_basis"]
+    return round(total, 2)
+
+def _port_update_stats(port, pnl_usd):
+    s = port["stats"]
+    s["total_trades"]   = s.get("total_trades", 0) + 1
+    if pnl_usd > 0:
+        s["winning_trades"] = s.get("winning_trades", 0) + 1
+    s["total_pnl_usd"] = round(s.get("total_pnl_usd", 0) + pnl_usd, 2)
+    s["win_rate"]       = round(s["winning_trades"] / s["total_trades"], 3) if s["total_trades"] else 0
+    val = _bot_portfolio_value(port)
+    if val > s.get("peak_capital", port["initial_capital"]):
+        s["peak_capital"] = val
+    dd = val - s.get("peak_capital", port["initial_capital"])
+    if dd < s.get("max_drawdown", 0):
+        s["max_drawdown"] = round(dd, 2)
+
+# ── Open / close positions ─────────────────────────────────────────────────────
+def _bot_open(port, ticker, tf, score, tier, conviction, target, stop_loss):
+    pct_map = {
+        ("HIGH",   "superb"): 0.12,
+        ("HIGH",   "great"):  0.10,
+        ("MEDIUM", "superb"): 0.09,
+        ("MEDIUM", "great"):  0.07,
+    }
+    alloc_pct = pct_map.get((conviction, tier), 0.07)
+    alloc     = min(port["capital"] * alloc_pct, port["initial_capital"] * 0.15)
+    price     = _bot_price(ticker)
+    if price <= 0 or alloc < 5:
+        return False
+    shares = round(alloc / price, 6)
+    cost   = round(shares * price, 2)
+    if cost > port["capital"]:
+        return False
+    port["capital"] = round(port["capital"] - cost, 2)
+    port["positions"].append({
+        "ticker":      ticker,
+        "entry_price": round(price, 4),
+        "shares":      shares,
+        "cost_basis":  cost,
+        "entry_date":  datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "tf":          tf,
+        "tier":        tier,
+        "score":       score,
+        "conviction":  conviction,
+        "target":      round(target,    4),
+        "stop_loss":   round(stop_loss, 4),
+        "trail_armed": False,
+    })
+    _port_log(port, f"BUY  {ticker}  @${price:.2f}  {shares:.4f}sh  {tier}  score={score}  tgt=${target:.2f}  sl=${stop_loss:.2f}")
+    return True
+
+def _bot_close(port, ticker, reason, price=None):
+    pos = next((p for p in port["positions"] if p["ticker"] == ticker), None)
+    if not pos:
+        return
+    if not price or price <= 0:
+        price = _bot_price(ticker) or pos["entry_price"]
+    pnl_usd = round((price - pos["entry_price"]) * pos["shares"], 2)
+    pnl_pct  = round((price - pos["entry_price"]) / pos["entry_price"] * 100, 2) if pos["entry_price"] else 0
+    port["capital"] = round(port["capital"] + price * pos["shares"], 2)
+    port["closed_trades"].insert(0, {
+        "ticker":      ticker,
+        "entry_price": pos["entry_price"],
+        "exit_price":  round(price, 4),
+        "shares":      pos["shares"],
+        "pnl_usd":     pnl_usd,
+        "pnl_pct":     pnl_pct,
+        "entry_date":  pos["entry_date"],
+        "exit_date":   datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "exit_reason": reason,
+        "tier":        pos.get("tier", "—"),
+        "tf":          pos.get("tf",   "1d"),
+    })
+    port["closed_trades"] = port["closed_trades"][:200]
+    port["positions"]     = [p for p in port["positions"] if p["ticker"] != ticker]
+    _port_update_stats(port, pnl_usd)
+    sign = "+" if pnl_usd >= 0 else ""
+    _port_log(port, f"SELL {ticker}  @${price:.2f}  {sign}${pnl_usd:.2f} ({sign}{pnl_pct:.1f}%)  [{reason}]")
+
+# ── Evaluate open positions ────────────────────────────────────────────────────
+def _bot_evaluate_positions(port):
+    for pos in list(port["positions"]):
+        ticker = pos["ticker"]
+        price  = _bot_price(ticker)
+        if price <= 0:
+            continue
+        entry = pos["entry_price"]
+        pct   = (price - entry) / entry if entry else 0
+
+        if pos.get("stop_loss") and price <= pos["stop_loss"]:
+            _bot_close(port, ticker, "SL", price); continue
+
+        if pos.get("target") and price >= pos["target"]:
+            _bot_close(port, ticker, "TP", price); continue
+
+        days_limit = 30 if pos.get("tf") == "1wk" else 10
+        try:
+            days_held = (datetime.now() - datetime.strptime(pos["entry_date"][:10], "%Y-%m-%d")).days
+            if days_held >= days_limit:
+                _bot_close(port, ticker, "TIME", price); continue
+        except Exception:
+            pass
+
+        # Arm trail stop at +8%: move stop to just above breakeven
+        if pct >= 0.08 and not pos.get("trail_armed"):
+            pos["trail_armed"] = True
+            new_stop = round(entry * 1.002, 4)
+            if new_stop > (pos.get("stop_loss") or 0):
+                pos["stop_loss"] = new_stop
+                _port_log(port, f"TRAIL {ticker}  +{pct*100:.1f}%  stop→${new_stop:.2f}")
+
+# ── Scan swing watchlist for new entries ───────────────────────────────────────
+def _bot_scan_entries(port):
+    if len(port["positions"]) >= 5:
+        return
+    deployed = sum(p["cost_basis"] for p in port["positions"])
+    if port["capital"] > 0 and deployed / (port["capital"] + deployed) >= 0.50:
+        return
+
+    sw = _cache_get(("swing_scan",))
+    if not sw and os.path.exists(SWING_CACHE_FILE):
+        try:
+            with open(SWING_CACHE_FILE) as f:
+                sw = json.load(f)
+        except Exception:
+            return
+    if not sw:
+        return
+
+    held   = {p["ticker"] for p in port["positions"]}
+    recent = {t["ticker"] for t in port["closed_trades"][:5]}
+
+    candidates = []
+    for ticker, tfs in (sw.get("entries") or {}).items():
+        if ticker in held or ticker in recent:
+            continue
+        for tf, info in tfs.items():
+            if tf not in ("1d", "1wk"):
+                continue
+            score = info.get("score", 0)
+            tier  = info.get("tier", "")
+            if score < 68 or tier not in ("great", "superb"):
+                continue
+            ai_conv = (info.get("ai") or {}).get("conviction", "MEDIUM")
+            if ai_conv and ai_conv not in ("HIGH", "MEDIUM"):
+                continue
+            candidates.append({"ticker": ticker, "tf": tf, "score": score,
+                                "tier": tier, "conviction": ai_conv or "MEDIUM"})
+
+    candidates.sort(key=lambda x: x["score"], reverse=True)
+
+    for c in candidates[:3]:
+        if len(port["positions"]) >= 5:
+            break
+        ticker = c["ticker"]
+        # Use cached AI analysis for targets if available
+        ana       = _cache_get(("analyze", ticker))
+        target    = (ana or {}).get("price_target_1w")
+        stop_loss = (ana or {}).get("stop_loss")
+        conviction = ((ana or {}).get("conviction") or c["conviction"]) if ana and not (ana or {}).get("error") else c["conviction"]
+        # Only trust cached BUY signal; skip if AI says SELL
+        if ana and not ana.get("error") and ana.get("action") not in ("BUY", None):
+            continue
+        price = _bot_price(ticker)
+        if price <= 0:
+            continue
+        if not target:
+            target    = price * (1.15 if c["tier"] == "superb" else 1.10)
+        if not stop_loss:
+            stop_loss = price * 0.95
+        if _bot_open(port, ticker, c["tf"], c["score"], c["tier"], conviction, target, stop_loss):
+            _port_write(port)
+
+# ── Background loop (15-min cycle) ────────────────────────────────────────────
+def _bot_loop():
+    while not _bot_stop_evt.is_set():
+        try:
+            port = _port_read()
+            if port.get("bot_active") and _is_market_hours():
+                _bot_evaluate_positions(port)
+                _bot_scan_entries(port)
+                port["last_eval"] = datetime.now().isoformat()
+                _port_write(port)
+        except Exception as ex:
+            print(f"[bot] loop error: {ex}")
+        _bot_stop_evt.wait(900)
+
+def _bot_ensure_thread():
+    global _bot_thread
+    if _bot_thread and _bot_thread.is_alive():
+        return
+    _bot_stop_evt.clear()
+    _bot_thread = threading.Thread(target=_bot_loop, daemon=True, name="bot-loop")
+    _bot_thread.start()
+
+_bot_ensure_thread()
+
+# ── Bot API endpoints ──────────────────────────────────────────────────────────
+@app.route("/api/bot/status")
+def bot_status():
+    port = _port_read()
+    val  = _bot_portfolio_value(port)
+    init = port["initial_capital"]
+    return jsonify({
+        "active":          port["bot_active"],
+        "capital":         round(port["capital"], 2),
+        "portfolio_value": val,
+        "initial_capital": init,
+        "pnl_usd":         round(val - init, 2),
+        "pnl_pct":         round((val - init) / init * 100, 2) if init else 0,
+        "positions":       len(port["positions"]),
+        "total_trades":    port["stats"].get("total_trades", 0),
+        "win_rate":        port["stats"].get("win_rate", 0),
+        "total_pnl_usd":   port["stats"].get("total_pnl_usd", 0),
+        "max_drawdown":    port["stats"].get("max_drawdown", 0),
+        "last_eval":       port.get("last_eval"),
+    })
+
+@app.route("/api/bot/positions")
+def bot_positions_ep():
+    port   = _port_read()
+    result = []
+    for pos in port["positions"]:
+        price = _bot_price(pos["ticker"])
+        pnl_u = round((price - pos["entry_price"]) * pos["shares"], 2) if price > 0 else 0
+        pnl_p = round((price - pos["entry_price"]) / pos["entry_price"] * 100, 2) if price > 0 and pos["entry_price"] else 0
+        try:
+            days_held = (datetime.now() - datetime.strptime(pos["entry_date"][:10], "%Y-%m-%d")).days
+        except Exception:
+            days_held = 0
+        result.append({**pos, "current_price": round(price, 4), "pnl_usd": pnl_u, "pnl_pct": pnl_p, "days_held": days_held})
+    return jsonify(result)
+
+@app.route("/api/bot/history")
+def bot_history_ep():
+    port = _port_read()
+    n    = min(int(request.args.get("n", 20)), 100)
+    return jsonify(port["closed_trades"][:n])
+
+@app.route("/api/bot/log")
+def bot_log_ep():
+    port = _port_read()
+    n    = min(int(request.args.get("n", 30)), 100)
+    return jsonify(port["log"][:n])
+
+@app.route("/api/bot/toggle", methods=["POST"])
+def bot_toggle():
+    port = _port_read()
+    port["bot_active"] = not port["bot_active"]
+    _port_log(port, "Bot " + ("ACTIVATED" if port["bot_active"] else "PAUSED"))
+    _port_write(port)
+    _bot_ensure_thread()
+    return jsonify({"active": port["bot_active"]})
+
+@app.route("/api/bot/reset", methods=["POST"])
+def bot_reset():
+    data = request.get_json(silent=True) or {}
+    if data.get("confirm") != "RESET":
+        return jsonify({"error": "confirm=RESET required"}), 400
+    _port_write(json.loads(json.dumps(_DEFAULT_PORTFOLIO)))
+    return jsonify({"ok": True})
+
 if __name__ == "__main__":
     os.makedirs("static", exist_ok=True)
     os.makedirs(PINE_DIR, exist_ok=True)

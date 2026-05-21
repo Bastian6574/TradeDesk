@@ -393,7 +393,8 @@ window._conToggleLive = function(idx) {
 // ── COMMANDS ──────────────────────────────────────────────────────────────────
 function _cmdHelp(p) {
   const cmds = [
-    ['/analyze [TICKER]', 'full AI analysis: action, price targets, support/resistance, bull & bear case (defaults to current ticker)'],
+    ['/analyze [TICKER]', 'full AI analysis: action, targets, support/resistance, bull & bear case'],
+    ['/bot',              'bot simulator summary  ·  flags: -h holdings  -d details  -trades  -stats  -start  -stop  -reset'],
     ['/scan',             'force-refresh the swing watchlist scan across all favorites'],
     ['/clear',            'clear all log sections'],
     ['/help',             'show this command list'],
@@ -401,6 +402,97 @@ function _cmdHelp(p) {
   _emit(p, '#4dabf7', 'HELP', 'BRAIN v1.0 commands:', null, null, 'st');
   for (const [cmd, desc] of cmds)
     _emit(p, '#4dabf760', `  ${cmd}`, desc, null, null, 'st');
+}
+
+async function _cmdBot(p, args) {
+  const flag = (args[0] || '').toLowerCase();
+
+  if (flag === '-start') {
+    const s = await fetch('/api/bot/status').then(r => r.json());
+    if (s.active) { _emit(p, '#ffd43b', '◉ BOT', 'already active', null, null, 'st'); return; }
+    await fetch('/api/bot/toggle', { method: 'POST' });
+    _emit(p, '#00d47e', '◉ BOT', 'activated — evaluating every 15 min during market hours', null, null, 'st');
+    return;
+  }
+  if (flag === '-stop') {
+    const s = await fetch('/api/bot/status').then(r => r.json());
+    if (!s.active) { _emit(p, '#ffd43b', '◉ BOT', 'already paused', null, null, 'st'); return; }
+    await fetch('/api/bot/toggle', { method: 'POST' });
+    _emit(p, '#ffd43b', '◉ BOT', 'paused', null, null, 'st');
+    return;
+  }
+  if (flag === '-reset') {
+    if ((args[1] || '').toUpperCase() === 'CONFIRM') {
+      const r = await fetch('/api/bot/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm: 'RESET' }) });
+      const d = await r.json();
+      _emit(p, d.ok ? '#00d47e' : '#f03e3e', '◉ BOT', d.ok ? 'portfolio reset to $10,000' : (d.error || 'reset failed'), null, null, 'st');
+    } else {
+      _emit(p, '#f03e3e', '◉ BOT', 'type  /bot -reset CONFIRM  to wipe all trades and reset to $10,000', null, null, 'st');
+    }
+    return;
+  }
+
+  // All remaining flags need status
+  const s = await fetch('/api/bot/status').then(r => r.json()).catch(() => null);
+  if (!s) { _emit(p, '#f03e3e', 'ERR', 'could not reach bot API', null, null, 'st'); return; }
+  const up     = s.pnl_usd >= 0;
+  const pnlC   = up ? '#00d47e' : '#f03e3e';
+  const pSign  = s.pnl_usd >= 0 ? '+' : '';
+  const active = s.active ? '◉ ACTIVE' : '○ PAUSED';
+
+  if (!flag || flag === '-s') {
+    _emit(p, '#4dabf7', `◉ BOT  ${active}`, `$${s.portfolio_value?.toFixed(2)}  ${pSign}$${Math.abs(s.pnl_usd).toFixed(2)} (${pSign}${s.pnl_pct?.toFixed(2)}%)`, null, null, 'st');
+    _emit(p, pnlC, '  P&L', `total ${pSign}$${s.total_pnl_usd?.toFixed(2)}  ·  drawdown $${s.max_drawdown?.toFixed(2)}`, null, null, 'st');
+    _emit(p, '#6a8099', '  ·', `${s.positions} open  ·  ${s.total_trades} trades  ·  win ${(s.win_rate * 100).toFixed(0)}%  ·  /bot -h for holdings`, null, null, 'st');
+    return;
+  }
+
+  if (flag === '-h') {
+    const positions = await fetch('/api/bot/positions').then(r => r.json());
+    if (!positions.length) { _emit(p, '#3d5066', '◉ BOT', 'no open positions', null, null, 'st'); return; }
+    _emit(p, '#4dabf7', `◉ HOLDINGS  ${positions.length} open`, '', null, null, 'st');
+    for (const pos of positions) {
+      const c = pos.pnl_pct >= 0 ? '#00d47e' : '#f03e3e';
+      const sg = pos.pnl_pct >= 0 ? '+' : '';
+      _emit(p, c, `  ${pos.ticker}`, `${sg}${pos.pnl_pct?.toFixed(2)}%  (${sg}$${pos.pnl_usd?.toFixed(2)})  ·  ${pos.tier}  ·  ${pos.tf}  ·  ${pos.days_held}d held`, null, null, 'st');
+    }
+    return;
+  }
+
+  if (flag === '-d') {
+    const positions = await fetch('/api/bot/positions').then(r => r.json());
+    if (!positions.length) { _emit(p, '#3d5066', '◉ BOT', 'no open positions', null, null, 'st'); return; }
+    _emit(p, '#4dabf7', `◉ DETAILS  ${positions.length} positions`, '', null, null, 'st');
+    for (const pos of positions) {
+      const c  = pos.pnl_pct >= 0 ? '#00d47e' : '#f03e3e';
+      const sg = pos.pnl_pct >= 0 ? '+' : '';
+      _emit(p, c,        `  ${pos.ticker}`, `now $${pos.current_price?.toFixed(2)}  entry $${pos.entry_price?.toFixed(2)}  ${sg}${pos.pnl_pct?.toFixed(2)}%  (${sg}$${pos.pnl_usd?.toFixed(2)})`, null, null, 'st');
+      _emit(p, '#6a8099', '  ·',            `tgt $${pos.target?.toFixed(2)}  sl $${pos.stop_loss?.toFixed(2)}  trail ${pos.trail_armed ? '✓ armed' : '—'}  held ${pos.days_held}d  ${pos.tf}  ${pos.tier}`, null, null, 'st');
+    }
+    return;
+  }
+
+  if (flag === '-trades') {
+    const trades = await fetch('/api/bot/history?n=15').then(r => r.json());
+    if (!trades.length) { _emit(p, '#3d5066', '◉ BOT', 'no closed trades yet', null, null, 'st'); return; }
+    _emit(p, '#4dabf7', `◉ TRADES  last ${trades.length}`, '', null, null, 'st');
+    for (const t of trades) {
+      const c  = t.pnl_usd >= 0 ? '#00d47e80' : '#f03e3e80';
+      const sg = t.pnl_usd >= 0 ? '+' : '';
+      _emit(p, c, `  ${t.ticker}`, `${sg}$${t.pnl_usd?.toFixed(2)} (${sg}${t.pnl_pct?.toFixed(1)}%)  [${t.exit_reason}]  ${(t.exit_date || '').slice(0, 10)}  ${t.tf}`, null, null, 'st');
+    }
+    return;
+  }
+
+  if (flag === '-stats') {
+    _emit(p, '#4dabf7', `◉ BOT STATS  ${active}`, '', null, null, 'st');
+    _emit(p, pnlC,      '  PORTFOLIO', `$${s.portfolio_value?.toFixed(2)}  (${pSign}${s.pnl_pct?.toFixed(2)}%)`, null, null, 'st');
+    _emit(p, pnlC,      '  REALISED',  `${pSign}$${s.total_pnl_usd?.toFixed(2)}  ·  drawdown $${s.max_drawdown?.toFixed(2)}`, null, null, 'st');
+    _emit(p, '#c8d8e8', '  RECORD',    `${s.total_trades} trades  ·  win rate ${(s.win_rate * 100).toFixed(0)}%  ·  ${s.positions} open`, null, null, 'st');
+    return;
+  }
+
+  _emit(p, '#3d5066', '◉ BOT', 'flags: -h holdings  -d details  -trades history  -stats  -start  -stop  -reset', null, null, 'st');
 }
 
 async function _cmdAnalyze(p, ticker) {
@@ -459,6 +551,7 @@ window._conRunCmd = function(idx) {
 
   if      (cmd === '/help' || cmd === '/?')          _cmdHelp(p);
   else if (cmd === '/analyze' || cmd === '/a')        _cmdAnalyze(p, (args[0] || p.ticker).toUpperCase());
+  else if (cmd === '/bot'    || cmd === '/b')         _cmdBot(p, args);
   else if (cmd === '/scan')                           window._conSwingScan(idx);
   else if (cmd === '/clear' || cmd === '/clr') {
     ['con-log-lt-', 'con-log-st-', 'con-log-sw-'].forEach(pfx => {

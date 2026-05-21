@@ -8,6 +8,7 @@ import { renderWatchlist, refreshWatchlistMinis, initSidebarResize } from '../wi
 import { initNewsTooltip, initTechTooltip, initSocialTooltip, initForecastTooltip, scheduleSentiment, scheduleDetails, fetchSocial, scheduleSocial, scheduleForecast, fetchDailyForecast, initIndicatorUI, updateRpContextRow } from '../widgets/InfoPanel/info.js';
 import { initPredictions } from '../widgets/Predictions/predictions.js';
 import { initFunding } from '../widgets/FundingOI/funding.js';
+import { initBot }     from '../widgets/TradingBot/bot.js';
 
 // ── CLOCK ─────────────────────────────────────────────────────────────────────
 function startClock() {
@@ -67,6 +68,7 @@ async function init() {
   initIndicatorUI();
   initPredictions();
   initFunding();
+  initBot();
   wireModalBackdrops();
   loadPineTS();
   loadPineFileScripts();

@@ -1,0 +1,39 @@
+/* ── TRADING BOT SIMULATOR WIDGET ── */
+.rp-bot { padding: 0; }
+
+.bot-capital-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 10px 3px;
+}
+.bot-arrow   { font-size: 16px; font-weight: 700; line-height: 1; flex-shrink: 0; }
+.bot-capital { font-size: 22px; font-weight: 700; letter-spacing: 0.5px; font-family: var(--font); }
+
+.bot-pnl {
+  padding: 0 10px 8px;
+  font-size: 9px; letter-spacing: 1px; font-family: var(--font);
+}
+
+.bot-positions-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; border-top: 1px solid var(--border);
+}
+.bot-pos-count { font-size: 20px; font-weight: 700; color: var(--text1); min-width: 24px; }
+.bot-pos-lbl   { font-size: 8px; color: var(--text3); letter-spacing: 1px; }
+
+.bot-actions {
+  padding: 6px 10px; border-top: 1px solid var(--border);
+}
+.bot-toggle-btn {
+  width: 100%; padding: 5px 0;
+  background: var(--bg3); border: 1px solid var(--border);
+  color: var(--text2); cursor: pointer; font-family: var(--font);
+  font-size: 9px; letter-spacing: 1px; transition: all 0.15s;
+}
+.bot-toggle-btn:hover         { border-color: var(--green); color: var(--green); }
+.bot-toggle-btn.active        { border-color: var(--green); color: var(--green); background: #00d47e10; }
+
+.bot-hint {
+  padding: 5px 10px 7px; border-top: 1px solid var(--border);
+  font-size: 8px; color: var(--text3); letter-spacing: 1px; text-align: center;
+}
+.bot-hint span { color: var(--amber); }

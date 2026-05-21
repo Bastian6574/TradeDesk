@@ -23,6 +23,7 @@
 <link rel="stylesheet" href="widgets/Console/console.css">
 <link rel="stylesheet" href="widgets/Predictions/predictions.css">
 <link rel="stylesheet" href="widgets/FundingOI/funding.css">
+<link rel="stylesheet" href="widgets/TradingBot/bot.css">
 <link rel="stylesheet" href="widgets/Research/research.css">
 </head>
 <body>
@@ -221,6 +222,25 @@
             <span class="fund-val" id="fund-lev-val">—</span>
           </div>
           <canvas id="fund-sparkline" class="fund-spark"></canvas>
+        </div>
+
+
+        <!-- Trading Bot Simulator -->
+        <div class="right-panel-header" style="border-top:1px solid var(--border);">BOT SIMULATOR</div>
+        <div id="bot-panel" class="rp-bot">
+          <div class="bot-capital-row">
+            <span class="bot-arrow"   id="bot-arrow">▲</span>
+            <span class="bot-capital" id="bot-capital">$10,000.00</span>
+          </div>
+          <div class="bot-pnl" id="bot-pnl" style="color:var(--green)">+$0.00  +0.00%</div>
+          <div class="bot-positions-row">
+            <span class="bot-pos-count" id="bot-pos-count">0</span>
+            <span class="bot-pos-lbl">open positions</span>
+          </div>
+          <div class="bot-actions">
+            <button class="bot-toggle-btn" id="bot-toggle-btn" onclick="window._botToggle()">▶ START</button>
+          </div>
+          <div class="bot-hint">type <span>/bot</span> in console for details</div>
         </div>
 
       </div><!-- end right-panel-scroll -->
