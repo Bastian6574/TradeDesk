@@ -545,7 +545,7 @@ def fetch_chart_data(ticker, period="5d", interval="30m"):
     if cached is not None:
         return cached
     try:
-        df = yf.Ticker(resolve_ticker(ticker)).history(period=period, interval=interval)
+        df = yf.Ticker(resolve_ticker(ticker)).history(period=period, interval=interval, auto_adjust=False, actions=False)
         if df.empty:
             return None
         df["MA20"] = df["Close"].rolling(20).mean()
@@ -851,7 +851,7 @@ def _fetch_spark(ticker, tf):
         if cached is not None:
             return cached
         try:
-            df = yf.Ticker(resolve_ticker(ticker)).history(start=start, interval=interval)
+            df = yf.Ticker(resolve_ticker(ticker)).history(start=start, interval=interval, auto_adjust=False, actions=False)
             if df.empty:
                 return None
             candles = []

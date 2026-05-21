@@ -1,4 +1,4 @@
-import { App, indicators, syncState, API, LAYOUT_COUNT, getContextTicker, clearContextOverride } from '../../core/state.js';
+import { App, indicators, syncState, API, LAYOUT_COUNT, getContextTicker, clearContextOverride, isCrypto } from '../../core/state.js';
 import { fmt, fmtVol, LIVE_MAX, N_FC, TF_N_FC, TF_PERIOD, toBinanceSymbol, tfIntervalMs, candleTimeRemaining } from '../../core/utils.js';
 import { PINE_SCRIPTS, pineActive, applyActivePineOverlays, applyPineOverlayToPanel, loadPineTS } from './pine.js';
 import { drawUtility } from '../UtilityPanel/utility.js';
@@ -468,6 +468,11 @@ export function stopPanel(p) {
   if (p.liveInterval) { clearInterval(p.liveInterval); p.liveInterval = null; }
   if (p.tickerInterval) { clearInterval(p.tickerInterval); p.tickerInterval = null; }
   setPanelTradingBadge(p, false);
+  // Close aggTrade WS if no other non-1s panel still uses this ticker
+  if (App._tradeFeeds?.has(p.ticker)) {
+    const others = App.panels.filter(q => q !== p && q.ticker === p.ticker && q.tf !== "1s");
+    if (!others.length) closeTradeWS(p.ticker);
+  }
 }
 
 // ── LOAD MAIN CHART ───────────────────────────────────────────────────────────
@@ -481,20 +486,28 @@ export async function loadMainChart(p) {
   showLoading(p, true);
   const period = TF_PERIOD[p.tf] || "5d";
   try {
-    const r = await fetch(API + `/api/chart/${p.ticker}?period=${period}&interval=${p.tf}`);
-    const data = await r.json();
+    // Fetch chart history and live price in parallel — draw once with fresh price baked in
+    const [chartRes, priceRes] = await Promise.all([
+      fetch(API + `/api/chart/${p.ticker}?period=${period}&interval=${p.tf}`),
+      fetch(API + `/api/price/${p.ticker}`).catch(() => null),
+    ]);
     if (p._gen !== myGen) { showLoading(p, false); return; }
+    const data = await chartRes.json();
     if (data.error) { showLoading(p, false); return; }
+    const priceData = priceRes ? await priceRes.json().catch(() => null) : null;
+    const freshPrice = (priceData && !priceData.error && priceData.last) ? priceData.last : data.last;
+    const freshPct   = (priceData && !priceData.error) ? (priceData.change_pct ?? 0) : (data.change_pct ?? 0);
     p.forecastData = []; p.forecastAll = null; p.forecastOffset = 0;
-    updateHeader(p, data);
+    updateHeader(p, { ...data, last: freshPrice, change_pct: freshPct });
     p.candleData = data;
     drawMainChart(p, data);
+    // Seed live candle with fresh price before first render — no visible jump
+    if (freshPrice) updateLiveCandle(p, freshPrice, freshPct);
     drawUtility(p, data._liveCandles);
     startTickerPoll(p);
     const ai = document.getElementById("avg-input-" + p.idx);
     if (ai) ai.value = App.state.averages[p.ticker] || "";
     updateAvgLegend(p);
-    // re-fetch prophet for the new TF if prophet is globally active
     if (_prophetRefreshFn) _prophetRefreshFn(p, myGen);
   } catch (e) { console.warn(e); }
   if (p._gen === myGen) showLoading(p, false);
@@ -591,14 +604,62 @@ async function _priceTick() {
         const price = d.last, pct = d.change_pct ?? 0;
         ps.forEach(p => {
           if (!p.candleData || !p.mainChart) return;
-          updateLiveCandle(p, price, pct);
+          // For crypto with active aggTrade WS: only update header, not candle
+          if (isCrypto(ticker) && App._tradeFeeds?.has(ticker)) {
+            const chEl = document.getElementById("main-change-" + p.idx);
+            if (chEl) {
+              const pos = pct >= 0;
+              chEl.textContent = (pos ? "▲ +" : "▼ ") + pct.toFixed(2) + "%";
+              chEl.className = "main-change " + (pos ? "pos" : "neg");
+            }
+          } else {
+            updateLiveCandle(p, price, pct);
+          }
         });
       } catch (e) {}
     }
   } finally { App.priceFeedBusy = false; }
 }
 
-function startTickerPoll(p) { startPriceFeed(); }
+// ── BINANCE AGGTRADE WEBSOCKET ────────────────────────────────────────────────
+function _ensureTradeWS(ticker) {
+  if (!App._tradeFeeds) App._tradeFeeds = new Map();
+  if (App._tradeFeeds.has(ticker)) return;
+  const binSym = toBinanceSymbol(ticker);
+  if (!binSym) return;
+  const feed = { ws: null, latestPrice: null, timer: null };
+  feed.ws = new WebSocket(`wss://stream.binance.com:9443/ws/${binSym}@aggTrade`);
+  feed.ws.onmessage = (evt) => {
+    try { feed.latestPrice = parseFloat(JSON.parse(evt.data).p); } catch { return; }
+    if (feed.timer) return;
+    feed.timer = setTimeout(() => {
+      feed.timer = null;
+      const price = feed.latestPrice;
+      if (price == null) return;
+      App.panels.forEach(p => {
+        if (p.tf === "1s" || p.ticker !== ticker || !p.candleData || !p.mainChart) return;
+        updateLiveCandle(p, price);
+      });
+    }, App.updateIntervalMs);
+  };
+  feed.ws.onerror = () => { try { feed.ws.close(); } catch {} App._tradeFeeds.delete(ticker); };
+  feed.ws.onclose = () => { App._tradeFeeds.delete(ticker); };
+  App._tradeFeeds.set(ticker, feed);
+}
+
+export function closeTradeWS(ticker) {
+  if (!App._tradeFeeds?.has(ticker)) return;
+  const feed = App._tradeFeeds.get(ticker);
+  if (feed.timer) { clearTimeout(feed.timer); feed.timer = null; }
+  try { feed.ws.close(); } catch {}
+  App._tradeFeeds.delete(ticker);
+}
+
+function startTickerPoll(p) {
+  startPriceFeed();
+  if (isCrypto(p.ticker) && p.tf !== "1s") _ensureTradeWS(p.ticker);
+}
+
 
 function updateLiveCandle(p, livePrice, changePct) {
   if (!p.candleData || !p.mainChart || !p.candleData._liveCandles) return;
@@ -607,7 +668,9 @@ function updateLiveCandle(p, livePrice, changePct) {
   const last = candles[candles.length - 1], ivMs = tfIntervalMs(p.tf);
   if (ivMs > 0 && Date.now() >= last.t + ivMs) {
     if (Date.now() - last.t > ivMs * 5) { setOffline(p); return; }
-    const newC = { t: last.t + ivMs, o: livePrice, h: livePrice, l: livePrice, c: livePrice, v: 0 };
+    // Use previous close as the new candle's open so a wick forms immediately
+    const prevClose = last.c;
+    const newC = { t: last.t + ivMs, o: prevClose, h: Math.max(prevClose, livePrice), l: Math.min(prevClose, livePrice), c: livePrice, v: 0 };
     candles.push(newC);
     if (candles.length > p.chartZoom + 500) candles.shift();
     if (p.forecastData.length > 0) { p.forecastData.shift(); }
@@ -618,10 +681,12 @@ function updateLiveCandle(p, livePrice, changePct) {
   const cur = candles[candles.length - 1];
   cur.c = livePrice; cur.h = Math.max(cur.h, livePrice); cur.l = Math.min(cur.l, livePrice);
   document.getElementById("main-price-" + p.idx).textContent = fmt(livePrice);
-  const chEl = document.getElementById("main-change-" + p.idx);
-  const pos = changePct >= 0;
-  chEl.textContent = (pos ? "▲ +" : "▼ ") + changePct.toFixed(2) + "%";
-  chEl.className = "main-change " + (pos ? "pos" : "neg");
+  if (changePct !== undefined) {
+    const chEl = document.getElementById("main-change-" + p.idx);
+    const pos = changePct >= 0;
+    chEl.textContent = (pos ? "▲ +" : "▼ ") + changePct.toFixed(2) + "%";
+    chEl.className = "main-change " + (pos ? "pos" : "neg");
+  }
   updateStatusBar(p, cur);
   if (p.mainChart) {
     // y-bounds from VISIBLE window only — not all 650 historical candles
