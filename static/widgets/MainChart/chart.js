@@ -23,6 +23,7 @@ export function mkPanel(idx) {
     _offline: false, _offlineTimer: null,
     _pineOverlayCache: {}, _liveCount: 0,
     _xOffset: 0, _yMin: null, _yMax: null, _panLocked: false,
+    _liveXStart: 0, _liveStartIdx: 0,
   };
 }
 
@@ -717,11 +718,14 @@ export function drawMainChart(p, data) {
 export function drawLiveChart(p, lastPrice) {
   const n = p.liveCandles.length;
   const xOff = Math.max(0, Math.round(p._xOffset || 0));
-  const zoom = Math.min(p.chartZoom, n);
-  const endIdx = Math.min(n, Math.max(zoom, n - xOff));
+  const zoom = p.chartZoom;
+  const endIdx = Math.max(0, n - xOff);
   const startIdx = Math.max(0, endIdx - zoom);
   const candles = p.liveCandles.slice(startIdx, endIdx);
   if (!candles.length) return;
+  // Right-align candles: pad left with empty space so chart width is always zoom-wide
+  const xStart = Math.max(0, zoom - candles.length);
+  p._liveXStart = xStart; p._liveStartIdx = startIdx;
   const avg = App.state.averages[p.ticker];
   const prices = candles.flatMap(c => [c.h, c.l]); if (avg) prices.push(avg);
   const autoMin = Math.min(...prices) * 0.999, autoMax = Math.max(...prices) * 1.001;
@@ -732,9 +736,9 @@ export function drawLiveChart(p, lastPrice) {
   document.getElementById("main-price-" + p.idx).textContent = fmt(lastPrice);
   p.mainChart = new Chart(canvas, {
     type: "scatter",
-    data: { labels: candles.map((_, i) => i), datasets: [{ data: candles.map((c, i) => ({ x: i, y: c.c })), pointRadius: 0, showLine: false }] },
-    options: buildChartOptions(p, candles, minP, maxP, true),
-    plugins: [...buildCandlePlugins(candles, avg, true), buildVPVRPlugin(p, candles), buildPriceLinePlugin(p, candles), buildDynamicSwingVWAPPlugin(p)]
+    data: { labels: candles.map((_, j) => xStart + j), datasets: [{ data: candles.map((c, j) => ({ x: xStart + j, y: c.c })), pointRadius: 0, showLine: false }] },
+    options: buildChartOptions(p, candles, minP, maxP, true, xStart, zoom),
+    plugins: [...buildCandlePlugins(candles, avg, true, xStart), buildVPVRPlugin(p, candles), buildPriceLinePlugin(p, candles), buildDynamicSwingVWAPPlugin(p)]
   });
   PINE_SCRIPTS.filter(s => s.overlay && pineActive[s.id]).forEach(def => {
     const cached = p._pineOverlayCache[def.id];
@@ -787,8 +791,14 @@ function _xBounds(p, candles) {
   return { xMin: n - zoom - xOff - 0.3, xMax: n - xOff - 0.7 + extras };
 }
 
-function buildChartOptions(p, candles, minP, maxP, isLive) {
-  const { xMin, xMax } = _xBounds(p, candles);
+function buildChartOptions(p, candles, minP, maxP, isLive, xStart = 0, fixedZoom = 0) {
+  let xMin, xMax;
+  if (isLive && fixedZoom > 0) {
+    xMin = xStart - 0.3;
+    xMax = xStart + candles.length - 0.7;
+  } else {
+    ({ xMin, xMax } = _xBounds(p, candles));
+  }
   return {
     animation: false, responsive: false,
     plugins: {
@@ -804,23 +814,23 @@ function buildChartOptions(p, candles, minP, maxP, isLive) {
       }
     },
     scales: {
-      x: { type: "linear", min: xMin, max: xMax, grid: { color: "#1e253022" }, ticks: { color: "#3d5066", font: { family: "'JetBrains Mono'", size: 9 }, maxTicksLimit: 8, callback: (v) => { const c = candles[Math.round(v)]; if (!c) return ""; const d = new Date(c.t); return p.tf === "1d" ? d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) : d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }); } } },
+      x: { type: "linear", min: xMin, max: xMax, grid: { color: "#1e253022" }, ticks: { color: "#3d5066", font: { family: "'JetBrains Mono'", size: 9 }, maxTicksLimit: 8, callback: (v) => { const c = candles[Math.round(v) - xStart]; if (!c) return ""; const d = new Date(c.t); return p.tf === "1d" ? d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) : d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }); } } },
       y: { min: p._yMin ?? minP, max: p._yMax ?? maxP, position: "right", grid: { color: "#1e253022" }, ticks: { color: "#6a8099", font: { family: "'JetBrains Mono'", size: 9 }, callback: (v) => fmt(v) } }
     }
   };
 }
 
 // ── CANDLE PLUGINS ────────────────────────────────────────────────────────────
-function buildCandlePlugins(candles, avg, isLive) {
+function buildCandlePlugins(candles, avg, isLive, xStart = 0) {
   const candlePlugin = {
     id: "candles",
     beforeDatasetsDraw(chart) {
       const { ctx, scales: { x, y }, chartArea: { top, bottom, left, right } } = chart;
-      const barW = Math.max(2, (x.getPixelForValue(1) - x.getPixelForValue(0)) * 0.6);
+      const barW = Math.max(2, (x.getPixelForValue(xStart + 1) - x.getPixelForValue(xStart)) * 0.6);
       const maxVol = candles.reduce((m, c) => Math.max(m, c.v || 0), 1);
       const volZoneH = (bottom - top) * 0.18;
       if (indicators.volume) candles.forEach((c, i) => {
-        const xPos = x.getPixelForValue(i);
+        const xPos = x.getPixelForValue(xStart + i);
         if (xPos < left - barW || xPos > right + barW) return;
         const volH = c.v > 0 ? Math.max(2, ((c.v || 0) / maxVol) * volZoneH) : 1;
         const bull = c.c >= c.o;
@@ -829,7 +839,7 @@ function buildCandlePlugins(candles, avg, isLive) {
         ctx.strokeRect(xPos - barW / 2, bottom - volH, barW, volH);
       });
       candles.forEach((c, i) => {
-        const xPos = x.getPixelForValue(i);
+        const xPos = x.getPixelForValue(xStart + i);
         if (xPos < left - barW || xPos > right + barW) return;
         const openY = y.getPixelForValue(c.o), closeY = y.getPixelForValue(c.c);
         const highY = y.getPixelForValue(c.h), lowY = y.getPixelForValue(c.l);
@@ -912,8 +922,43 @@ function buildPriceLinePlugin(p, candles) {
 // ── DYNAMIC SWING ANCHORED VWAP PLUGIN ───────────────────────────────────────
 const _dsvwapCache = new WeakMap();
 
-function _computeDSVWAP(candles, leftLen = 10, rightLen = 10) {
+const _dsvwapSettings = (() => {
+  try { return JSON.parse(localStorage.getItem("td_dsvwap_settings") || "null") || { period: 50, apt: 20, volatBias: 10, adaptApt: true }; }
+  catch { return { period: 50, apt: 20, volatBias: 10, adaptApt: true }; }
+})();
+function _saveDsvwapSettings() { localStorage.setItem("td_dsvwap_settings", JSON.stringify(_dsvwapSettings)); }
+
+function _computeATRLast(candles, period = 14) {
   const n = candles.length;
+  if (n < 2) return 0;
+  const start = Math.max(1, n - period);
+  let sum = 0;
+  for (let i = start; i < n; i++) {
+    const prev = candles[i - 1].c;
+    sum += Math.max(candles[i].h - candles[i].l, Math.abs(candles[i].h - prev), Math.abs(candles[i].l - prev));
+  }
+  return sum / (n - start);
+}
+
+function _emaSmooth(pts, period) {
+  if (period <= 1 || pts.length === 0) return pts;
+  const k = 2 / (period + 1);
+  let emaVal = pts[0].y;
+  return pts.map((pt, i) => {
+    if (i === 0) { emaVal = pt.y; return pt; }
+    emaVal = pt.y * k + emaVal * (1 - k);
+    return { idx: pt.idx, y: emaVal };
+  });
+}
+
+function _computeDSVWAP(candles) {
+  const n = candles.length;
+  const halfPeriod = Math.floor(_dsvwapSettings.period / 2);
+  const atrRatio = n >= 15 ? _computeATRLast(candles) / Math.max(1, (candles[n-1].h + candles[n-1].l) / 2) : 0.01;
+  const atrAdj = _dsvwapSettings.volatBias > 0 ? Math.round(_dsvwapSettings.volatBias * atrRatio * halfPeriod) : 0;
+  const leftLen = halfPeriod + atrAdj;
+  const rightLen = halfPeriod + atrAdj;
+
   const pivots = [];
   for (let i = leftLen; i < n - rightLen; i++) {
     const hi = candles[i].h, lo = candles[i].l;
@@ -941,6 +986,10 @@ function _computeDSVWAP(candles, leftLen = 10, rightLen = 10) {
     swings.push(pv);
   }
 
+  const aptPeriod = _dsvwapSettings.adaptApt
+    ? Math.max(1, Math.round(_dsvwapSettings.apt * (1 + atrRatio * _dsvwapSettings.volatBias)))
+    : _dsvwapSettings.apt;
+
   const segments = [];
   for (let s = 0; s < swings.length; s++) {
     const sw = swings[s];
@@ -954,7 +1003,8 @@ function _computeDSVWAP(candles, leftLen = 10, rightLen = 10) {
       cumPV += hlc3 * vol; cumV += vol;
       pts.push({ idx: i, y: cumPV / cumV });
     }
-    if (pts.length >= 2) segments.push({ ...sw, color: sw.type === "H" ? "#089981" : "#f23645", pts });
+    const smoothed = aptPeriod > 1 ? _emaSmooth(pts, aptPeriod) : pts;
+    if (smoothed.length >= 2) segments.push({ ...sw, color: sw.type === "H" ? "#089981" : "#f23645", pts: smoothed });
   }
   return { swings, segments };
 }
@@ -967,7 +1017,8 @@ function buildDynamicSwingVWAPPlugin(p) {
       const candles = p.tf === "1s" ? p.liveCandles : p.candleData?._liveCandles;
       if (!candles || candles.length < 25) return;
 
-      const cacheKey = candles.length + ":" + (candles[candles.length - 1]?.t || 0);
+      const settingsKey = JSON.stringify(_dsvwapSettings);
+      const cacheKey = candles.length + ":" + (candles[candles.length - 1]?.t || 0) + ":" + settingsKey;
       let cached = _dsvwapCache.get(chart);
       if (!cached || cached.key !== cacheKey) {
         cached = { key: cacheKey, ..._computeDSVWAP(candles) };
@@ -975,6 +1026,11 @@ function buildDynamicSwingVWAPPlugin(p) {
       }
       const { swings, segments } = cached;
       const { ctx, scales: { x, y }, chartArea } = chart;
+
+      // Map full-array index → x-axis value (accounts for ticker-tape xStart offset)
+      const xStart = p.tf === "1s" ? (p._liveXStart || 0) : 0;
+      const startIdx = p.tf === "1s" ? (p._liveStartIdx || 0) : 0;
+      const idxToX = (idx) => xStart + (idx - startIdx);
 
       ctx.save();
       ctx.beginPath();
@@ -984,10 +1040,10 @@ function buildDynamicSwingVWAPPlugin(p) {
       for (const seg of segments) {
         ctx.beginPath();
         ctx.strokeStyle = seg.color + "cc";
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 2.5;
         let started = false;
         for (const pt of seg.pts) {
-          const px = x.getPixelForValue(pt.idx), py = y.getPixelForValue(pt.y);
+          const px = x.getPixelForValue(idxToX(pt.idx)), py = y.getPixelForValue(pt.y);
           if (!started) { ctx.moveTo(px, py); started = true; } else ctx.lineTo(px, py);
         }
         ctx.stroke();
@@ -996,7 +1052,7 @@ function buildDynamicSwingVWAPPlugin(p) {
       ctx.font = "bold 9px 'JetBrains Mono', monospace";
       ctx.textAlign = "center";
       for (const sw of swings) {
-        const px = x.getPixelForValue(sw.idx);
+        const px = x.getPixelForValue(idxToX(sw.idx));
         const isH = sw.type === "H";
         const dotY = y.getPixelForValue(sw.price);
         const lblY = dotY + (isH ? -10 : 10);
@@ -1687,10 +1743,77 @@ function _refreshIndPopup() {
   if (!body) return;
   body.innerHTML = "";
   CHART_INDICATORS.forEach(ind => {
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "position:relative;display:flex;align-items:center;";
     const row = document.createElement("label");
     row.className = "pine-popup-row";
+    row.style.cssText = "flex:1;margin:0;";
     row.innerHTML = `<input type="checkbox" class="ind-cb" id="ind-cb-${ind.id}" ${indActive[ind.id] ? "checked" : ""} onchange="toggleChartIndicator('${ind.id}',this.checked)"><span>${ind.name}</span><span class="pine-popup-tag ovr" style="font-size:7px;letter-spacing:.5px;opacity:.65">${ind.desc}</span>`;
-    body.appendChild(row);
+    wrap.appendChild(row);
+    if (ind.id === "ind_dsvwap") {
+      const gear = document.createElement("button");
+      gear.textContent = "⚙"; gear.title = "DSVWAP settings";
+      gear.style.cssText = "background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px;padding:0 4px;flex-shrink:0;";
+      gear.onclick = (e) => { e.stopPropagation(); _toggleDsvwapSettingsPopup(wrap); };
+      wrap.appendChild(gear);
+      const sp = _buildDsvwapSettingsPopup();
+      sp.id = "dsvwap-settings-popup";
+      sp.style.display = "none";
+      wrap.appendChild(sp);
+    }
+    body.appendChild(wrap);
+  });
+}
+
+function _buildDsvwapSettingsPopup() {
+  const el = document.createElement("div");
+  el.style.cssText = "position:absolute;right:0;top:100%;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:10px 12px;z-index:999;min-width:200px;font-size:10px;color:var(--text2);";
+  const s = _dsvwapSettings;
+  el.innerHTML = `
+    <div style="font-size:9px;letter-spacing:1px;color:var(--text3);margin-bottom:8px;">DSVWAP SETTINGS</div>
+    <div style="display:flex;flex-direction:column;gap:6px;">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span style="min-width:110px;">Swing Period</span>
+        <input type="range" min="10" max="200" step="5" value="${s.period}" id="dsvwap-period-sl" style="flex:1;" oninput="document.getElementById('dsvwap-period-v').textContent=this.value;_onDsvwapSetting('period',+this.value)">
+        <span id="dsvwap-period-v" style="min-width:24px;text-align:right;">${s.period}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span style="min-width:110px;">Adaptive Price Track</span>
+        <input type="range" min="1" max="50" step="1" value="${s.apt}" id="dsvwap-apt-sl" style="flex:1;" oninput="document.getElementById('dsvwap-apt-v').textContent=this.value;_onDsvwapSetting('apt',+this.value)">
+        <span id="dsvwap-apt-v" style="min-width:24px;text-align:right;">${s.apt}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span style="min-width:110px;">Volatility Bias</span>
+        <input type="range" min="0" max="50" step="1" value="${s.volatBias}" id="dsvwap-vb-sl" style="flex:1;" oninput="document.getElementById('dsvwap-vb-v').textContent=this.value;_onDsvwapSetting('volatBias',+this.value)">
+        <span id="dsvwap-vb-v" style="min-width:24px;text-align:right;">${s.volatBias}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span style="min-width:110px;">Adapt APT by ATR</span>
+        <input type="checkbox" ${s.adaptApt ? "checked" : ""} id="dsvwap-adapt-cb" onchange="_onDsvwapSetting('adaptApt',this.checked)">
+      </div>
+    </div>
+  `;
+  return el;
+}
+
+function _toggleDsvwapSettingsPopup(wrap) {
+  const sp = wrap.querySelector("#dsvwap-settings-popup");
+  if (!sp) return;
+  const open = sp.style.display !== "none";
+  sp.style.display = open ? "none" : "";
+  if (!open) {
+    const outside = (e) => { if (!sp.contains(e.target) && !e.target.closest("[title='DSVWAP settings']")) { sp.style.display = "none"; document.removeEventListener("click", outside); } };
+    setTimeout(() => document.addEventListener("click", outside), 0);
+  }
+}
+
+function _onDsvwapSetting(key, val) {
+  _dsvwapSettings[key] = val;
+  _saveDsvwapSettings();
+  App.panels.forEach(p => {
+    if (p.mainChart) _dsvwapCache.delete(p.mainChart);
+    if (p.tf === "1s" && p.liveCandles.length) drawLiveChart(p, p.liveCandles[p.liveCandles.length - 1].c);
+    else if (p.candleData) drawMainChart(p, p.candleData);
   });
 }
 
@@ -1754,3 +1877,5 @@ window.toggleChartIndicator = toggleChartIndicator;
 window.resetPanelView = resetPanelView;
 window.toggleUtilitySettings = toggleUtilitySettings;
 window.onUtilityYZoom = onUtilityYZoom;
+window._onDsvwapSetting = _onDsvwapSetting;
+window._toggleDsvwapSettingsPopup = _toggleDsvwapSettingsPopup;
