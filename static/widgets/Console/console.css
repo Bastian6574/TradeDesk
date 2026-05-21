@@ -15,14 +15,56 @@
 .con-ticker { color: #4dabf7; font-weight: 700; }
 .con-status { color: var(--text3); font-size: 8px; }
 
-/* ── LOG ── */
+/* ── SECTION HEADERS ── */
+.con-section-hdr {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  height: 18px;
+}
+.con-section-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--text3);
+  text-transform: uppercase;
+}
+.con-section-dot {
+  font-size: 8px;
+  color: #2a3545;
+}
+.con-section-state {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: #3d5066;
+  transition: color 0.4s;
+}
+.con-section-state.con-state-violent {
+  animation: con-pulse 1.4s ease-in-out infinite;
+}
+@keyframes con-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
+}
+
+/* ── LOGS ── */
 .con-log {
-  flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 4px 0;
   min-height: 0;
 }
+.con-log.con-log-lt { flex: 2; }
+.con-log.con-log-st { flex: 3; }
+
 .con-log::-webkit-scrollbar       { width: 4px; }
 .con-log::-webkit-scrollbar-track { background: transparent; }
 .con-log::-webkit-scrollbar-thumb { background: #2a3545; border-radius: 2px; }
@@ -30,7 +72,7 @@
 /* ── ROWS ── */
 .con-row {
   position: relative;
-  isolation: isolate;       /* stacking context so z-index:-1 bar stays behind text */
+  isolation: isolate;
   display: flex;
   align-items: baseline;
   gap: 8px;
@@ -42,7 +84,7 @@
 .con-row:nth-child(even) { background: #ffffff04; }
 .con-row:hover           { background: #ffffff0d; }
 
-/* Backdrop weight bar — sits behind all text via z-index:-1 */
+/* Backdrop weight bar */
 .con-bar {
   position: absolute;
   left: 0; top: 0;
