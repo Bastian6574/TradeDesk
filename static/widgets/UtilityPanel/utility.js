@@ -42,7 +42,10 @@ export function drawRSI(p, candles) {
   }
   const xOff = p._xOffset || 0;
   const n = candles.length, zoom = Math.min(p.chartZoom, n);
-  const rsiXMin = n - zoom - xOff - 0.3, rsiXMax = n - xOff - 0.7 + _extras(p);
+  const isLive1s = p.tf === "1s";
+  const xStart = isLive1s ? (p._liveXStart || 0) : 0;
+  const rsiXMin = isLive1s ? -0.3 : n - zoom - xOff - 0.3;
+  const rsiXMax = isLive1s ? p.chartZoom - 0.7 : n - xOff - 0.7 + _extras(p);
   const yZoom = p.widgetSettings?.utilityYZoom || 1.0;
   let rsiYMin = 0, rsiYMax = 100;
   if (yZoom > 1.01 && lastRSI !== undefined) {
@@ -51,7 +54,7 @@ export function drawRSI(p, candles) {
     rsiYMax = Math.min(100, lastRSI + half);
   }
   if (p.rsiChart && document.contains(p.rsiChart.canvas)) {
-    p.rsiChart.data.datasets[0].data = rsiVals.map((v, i) => ({ x: i, y: v }));
+    p.rsiChart.data.datasets[0].data = rsiVals.map((v, i) => ({ x: xStart + i, y: v }));
     p.rsiChart.options.scales.x.min = rsiXMin;
     p.rsiChart.options.scales.x.max = rsiXMax;
     p.rsiChart.options.scales.y.min = rsiYMin;
@@ -86,7 +89,7 @@ export function drawRSI(p, candles) {
   };
   p.rsiChart = new Chart(canvas, {
     type: "scatter",
-    data: { labels: candles.map((_, i) => i), datasets: [{ data: rsiVals.map((v, i) => ({ x: i, y: v })), borderColor: "#3e8ef0", borderWidth: 1.5, pointRadius: 0, showLine: true, tension: 0.3, spanGaps: false }] },
+    data: { labels: candles.map((_, i) => xStart + i), datasets: [{ data: rsiVals.map((v, i) => ({ x: xStart + i, y: v })), borderColor: "#3e8ef0", borderWidth: 1.5, pointRadius: 0, showLine: true, tension: 0.3, spanGaps: false }] },
     options: {
       animation: false, responsive: false,
       plugins: { legend: { display: false }, tooltip: {
@@ -118,7 +121,10 @@ export function drawMACD(p, candles) {
   if (zoneEl && lastH != null) { zoneEl.textContent = lastH >= 0 ? "BULL" : "BEAR"; zoneEl.style.color = lastH >= 0 ? "var(--green)" : "var(--red)"; }
   const xOff = p._xOffset || 0;
   const n = candles.length, zoom = Math.min(p.chartZoom, n);
-  const macdXMin = n - zoom - xOff - 0.3, macdXMax = n - xOff - 0.7 + _extras(p);
+  const isLive1s = p.tf === "1s";
+  const xStart = isLive1s ? (p._liveXStart || 0) : 0;
+  const macdXMin = isLive1s ? -0.3 : n - zoom - xOff - 0.3;
+  const macdXMax = isLive1s ? p.chartZoom - 0.7 : n - xOff - 0.7 + _extras(p);
   const yZoom = p.widgetSettings?.utilityYZoom || 1.0;
   let macdYMin, macdYMax;
   if (yZoom > 1.01) {
@@ -131,12 +137,13 @@ export function drawMACD(p, candles) {
   }
   if (p.rsiChart && document.contains(p.rsiChart.canvas)) {
     p.rsiChart._hist = hist;
-    p.rsiChart.data.datasets[0].data = macdLine.map((v, i) => ({ x: i, y: v }));
-    p.rsiChart.data.datasets[1].data = signal.map((v, i) => ({ x: i, y: v }));
+    p.rsiChart.data.datasets[0].data = macdLine.map((v, i) => ({ x: xStart + i, y: v }));
+    p.rsiChart.data.datasets[1].data = signal.map((v, i) => ({ x: xStart + i, y: v }));
     p.rsiChart.options.scales.x.min = macdXMin;
     p.rsiChart.options.scales.x.max = macdXMax;
     if (macdYMin !== undefined) { p.rsiChart.options.scales.y.min = macdYMin; p.rsiChart.options.scales.y.max = macdYMax; }
     else { delete p.rsiChart.options.scales.y.min; delete p.rsiChart.options.scales.y.max; }
+    p.rsiChart._xStart = xStart;
     p.rsiChart.update("none");
     return;
   }
@@ -153,10 +160,11 @@ export function drawMACD(p, candles) {
     beforeDatasetsDraw(chart) {
       const h = chart._hist || [];
       const { ctx, scales: { x, y } } = chart;
+      const hxStart = chart._xStart || 0;
       h.forEach((hv, i) => {
         if (hv == null) return;
-        const xPos = x.getPixelForValue(i);
-        const barW = Math.max(1, (x.getPixelForValue(1) - x.getPixelForValue(0)) * 0.6);
+        const xPos = x.getPixelForValue(hxStart + i);
+        const barW = Math.max(1, (x.getPixelForValue(hxStart + 1) - x.getPixelForValue(hxStart)) * 0.6);
         const zero = y.getPixelForValue(0), top = y.getPixelForValue(hv);
         const bTop = Math.min(zero, top), bH = Math.abs(zero - top);
         if (bH < 1) return;
@@ -170,9 +178,9 @@ export function drawMACD(p, candles) {
   };
   p.rsiChart = new Chart(canvas, {
     type: "scatter",
-    data: { labels: candles.map((_, i) => i), datasets: [
-      { data: macdLine.map((v, i) => ({ x: i, y: v })), borderColor: "#3e8ef0", borderWidth: 1.5, pointRadius: 0, showLine: true, tension: 0.3, spanGaps: false },
-      { data: signal.map((v, i) => ({ x: i, y: v })), borderColor: "#f0a03e", borderWidth: 1, pointRadius: 0, showLine: true, tension: 0.3, spanGaps: false }
+    data: { labels: candles.map((_, i) => xStart + i), datasets: [
+      { data: macdLine.map((v, i) => ({ x: xStart + i, y: v })), borderColor: "#3e8ef0", borderWidth: 1.5, pointRadius: 0, showLine: true, tension: 0.3, spanGaps: false },
+      { data: signal.map((v, i) => ({ x: xStart + i, y: v })), borderColor: "#f0a03e", borderWidth: 1, pointRadius: 0, showLine: true, tension: 0.3, spanGaps: false }
     ]},
     options: {
       animation: false, responsive: false,
@@ -190,6 +198,7 @@ export function drawMACD(p, candles) {
     plugins: [histPlugin]
   });
   p.rsiChart._hist = hist;
+  p.rsiChart._xStart = xStart;
 }
 
 // ── PINE OSCILLATOR ───────────────────────────────────────────────────────────
