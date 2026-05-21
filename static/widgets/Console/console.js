@@ -329,13 +329,72 @@ window._conToggleLive = function(idx) {
     : 'auto-control OFF', null, null, 'st');
 };
 
+// ── COMMANDS ──────────────────────────────────────────────────────────────────
+function _cmdHelp(p) {
+  const cmds = [
+    ['/analyze [TICKER]', 'full AI analysis: action, price targets, support/resistance, bull & bear case (defaults to current ticker)'],
+    ['/scan',             'force-refresh the swing watchlist scan across all favorites'],
+    ['/clear',            'clear all log sections'],
+    ['/help',             'show this command list'],
+  ];
+  _emit(p, '#4dabf7', 'HELP', 'BRAIN v1.0 commands:', null, null, 'st');
+  for (const [cmd, desc] of cmds)
+    _emit(p, '#4dabf760', `  ${cmd}`, desc, null, null, 'st');
+}
+
+async function _cmdAnalyze(p, ticker) {
+  _emit(p, '#ff9500', '◎ ANALYZE', `${ticker}  · gathering data, running AI…`, null, null, 'st');
+  try {
+    const res = await fetch(`/api/analyze/${encodeURIComponent(ticker)}`);
+    if (!res.ok) { _emit(p, '#f03e3e', 'ERR', `HTTP ${res.status}`, null, null, 'st'); return; }
+    const d = await res.json();
+    if (d.error) { _emit(p, '#f03e3e', 'ERR', d.error, null, null, 'st'); return; }
+
+    const aC = d.action === 'BUY' ? '#00d47e' : d.action === 'SELL' ? '#f03e3e' : d.action === 'WATCH' ? '#ffd43b' : '#6a8099';
+    const aD = d.action === 'BUY' ? 'bull'    : d.action === 'SELL' ? 'bear'    : null;
+    const cD = d.conviction === 'HIGH' ? '●●●' : d.conviction === 'MEDIUM' ? '●●○' : '●○○';
+    _emit(p, aC,          `◎ ${d.action} ${ticker}`, `${cD} ${d.conviction} conviction  ·  $${d.price}`, 80, aD, 'st');
+    if (d.summary)        _emit(p, '#c8d8e8',    '  ↳',      d.summary,    null, null, 'st');
+    if (d.avg_price != null) {
+      const pc = d.pnl_pct >= 0 ? '#00d47e' : '#f03e3e';
+      _emit(p, pc, '  AVG', `cost $${d.avg_price}  P&L ${d.pnl_pct > 0 ? '+' : ''}${d.pnl_pct}%`, null, null, 'st');
+    }
+    if (d.price_target_1w != null)
+      _emit(p, '#4dabf7', '  TARGETS', `1W $${d.price_target_1w}  ·  1M $${d.price_target_1m}  ·  stop $${d.stop_loss ?? '?'}`, null, null, 'st');
+    if (d.support_1 != null)
+      _emit(p, '#6a8099',  '  LEVELS',  `S1 $${d.support_1}  S2 $${d.support_2 ?? '?'}  ·  R1 $${d.resistance_1}  R2 $${d.resistance_2 ?? '?'}`, null, null, 'st');
+    if (d.bull_case)      _emit(p, '#00d47e80', '  BULL ↑', d.bull_case,   null, null, 'st');
+    if (d.bear_case)      _emit(p, '#f03e3e80', '  BEAR ↓', d.bear_case,   null, null, 'st');
+    if (d.key_level)      _emit(p, '#ffd43b',   '  KEY',    d.key_level,   null, null, 'st');
+    if (d.entry_zone && d.action !== 'SELL')
+                          _emit(p, '#a9e34b',   '  ENTRY',  d.entry_zone,  null, null, 'st');
+    _emit(p, '#2a3340', '  ·', `model: ${d.model ?? '?'}  ·  tf: ${d.timeframe_bias ?? '?'}  ·  ${new Date().toLocaleTimeString()}`, null, null, 'st');
+  } catch (e) {
+    _emit(p, '#f03e3e', 'ERR', String(e), null, null, 'st');
+  }
+}
+
 window._conRunCmd = function(idx) {
   const input = document.getElementById('con-cmd-' + idx); if (!input) return;
-  const cmd = input.value.trim(); if (!cmd) return;
+  const raw = input.value.trim(); if (!raw) return;
   input.value = '';
   const p = App.panels.find(q => q.idx === idx); if (!p) return;
-  _emit(p, '#3d5066', '>', cmd, null, null, 'st');
-  _emit(p, '#4dabf7', 'SYS', 'command input active — AI integration coming soon', null, null, 'st');
+  _emit(p, '#3d5066', '>', raw, null, null, 'st');
+
+  const parts = raw.trim().split(/\s+/);
+  const cmd   = parts[0].toLowerCase();
+  const args  = parts.slice(1);
+
+  if      (cmd === '/help' || cmd === '/?')          _cmdHelp(p);
+  else if (cmd === '/analyze' || cmd === '/a')        _cmdAnalyze(p, (args[0] || p.ticker).toUpperCase());
+  else if (cmd === '/scan')                           window._conSwingScan(idx);
+  else if (cmd === '/clear' || cmd === '/clr') {
+    ['con-log-lt-', 'con-log-st-', 'con-log-sw-'].forEach(pfx => {
+      const l = document.getElementById(pfx + idx); if (l) l.innerHTML = '';
+    });
+    _emit(p, '#3d5066', 'SYS', 'logs cleared', null, null, 'st');
+  }
+  else _emit(p, '#f03e3e', 'ERR', `unknown command "${_esc(raw)}" — type /help`, null, null, 'st');
 };
 
 window._conSwingScan = async function(idx) {

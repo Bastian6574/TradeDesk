@@ -1091,6 +1091,238 @@ def get_swing_scan():
         return jsonify({"error": str(e)}), 500
 
 
+# ── COMPREHENSIVE ANALYSIS ────────────────────────────────────────────────────
+def _gather_tf_technicals(ticker, interval, period):
+    try:
+        d = fetch_chart_data(ticker, period, interval)
+        if not d or d.get("error") or len(d.get("candles", [])) < 20:
+            return None
+        candles = d["candles"]
+        closes = _np.array([c["c"] for c in candles], dtype=float)
+        highs  = _np.array([c["h"] for c in candles], dtype=float)
+        lows   = _np.array([c["l"] for c in candles], dtype=float)
+        vols   = _np.array([c.get("v", 0) or 0 for c in candles], dtype=float)
+        n = len(closes); price = float(closes[-1])
+
+        rsi      = float(_compute_rsi(closes))
+        e12      = _ema_series(closes, 12); e26 = _ema_series(closes, 26)
+        macd_l   = e12 - e26; sig = _ema_series(list(macd_l), 9); hist = macd_l - sig
+        macd_h   = float(hist[-1]); macd_h_p = float(hist[-2]) if n >= 2 else macd_h
+        cross_up = bool(macd_h_p < 0 and macd_h >= 0)
+
+        ema20  = float(_ema_series(closes, 20)[-1])  if n >= 20  else None
+        ema50  = float(_ema_series(closes, 50)[-1])  if n >= 50  else None
+        ema200 = float(_ema_series(closes, 200)[-1]) if n >= 200 else None
+
+        last20 = closes[-min(20, n):]
+        bb_mid = float(last20.mean()); bb_std = float(last20.std())
+        bb_u   = bb_mid + 2*bb_std;   bb_l   = bb_mid - 2*bb_std
+        bb_pct = (price - bb_l) / (bb_u - bb_l) if bb_u > bb_l else 0.5
+
+        avg_vol   = float(vols[-20:].mean()) if n >= 20 else 1.0
+        vol_ratio = float(vols[-1]) / avg_vol if avg_vol > 0 else 1.0
+
+        support = float(lows[-min(20, n):].min()); resist = float(highs[-min(20, n):].max())
+        e20_arr = _ema_series(closes, 20)
+        slope   = (float(e20_arr[-1]) - float(e20_arr[-min(6, n)])) / float(e20_arr[-1]) * 100
+        trend   = "UP" if slope > 0.3 else "DOWN" if slope < -0.3 else "FLAT"
+
+        return {
+            "price": round(price, 4), "rsi": round(rsi, 1),
+            "macd_hist": round(macd_h, 6), "macd_cross_up": cross_up,
+            "ema20": round(ema20, 4) if ema20 else None,
+            "ema50": round(ema50, 4) if ema50 else None,
+            "ema200": round(ema200, 4) if ema200 else None,
+            "bb_pct": round(bb_pct, 2), "bb_upper": round(bb_u, 4), "bb_lower": round(bb_l, 4),
+            "vol_ratio": round(vol_ratio, 2), "support": round(support, 4),
+            "resist": round(resist, 4), "trend": trend, "bars": n,
+        }
+    except Exception:
+        return None
+
+
+def _heuristic_analysis(ticker, tech_by_tf, price, avg_price):
+    bull = bear = 0
+    for tech in tech_by_tf.values():
+        rsi = tech["rsi"]
+        if rsi < 35: bull += 2
+        elif rsi > 65: bear += 2
+        bull += (1 if tech["macd_hist"] > 0 else 0)
+        bear += (1 if tech["macd_hist"] < 0 else 0)
+        bull += (1 if tech["trend"] == "UP"   else 0)
+        bear += (1 if tech["trend"] == "DOWN" else 0)
+    action = "BUY" if bull > bear * 1.3 else "SELL" if bear > bull * 1.3 else "WATCH"
+    conv   = "HIGH" if abs(bull-bear) >= 6 else "MEDIUM" if abs(bull-bear) >= 3 else "LOW"
+    dt     = tech_by_tf.get("1d") or next(iter(tech_by_tf.values()))
+    result = {
+        "action": action, "conviction": conv,
+        "summary": f"Heuristic: {bull} bull vs {bear} bear signals across {len(tech_by_tf)} timeframes. No AI key configured.",
+        "bull_case": f"Bullish momentum on {bull} signals. Support at ${dt['support']:.2f}.",
+        "bear_case":  f"Bearish momentum on {bear} signals. Break of ${dt['support']:.2f} opens further downside.",
+        "price_target_1w": round(price * (1.03 if action == "BUY" else 0.97), 2),
+        "price_target_1m": round(price * (1.08 if action == "BUY" else 0.93), 2),
+        "support_1": round(dt["support"], 2), "support_2": None,
+        "resistance_1": round(dt["resist"], 2), "resistance_2": None,
+        "key_level": f"${dt['ema50']:.2f} EMA50" if dt.get("ema50") else f"${dt['support']:.2f} support",
+        "entry_zone": f"${round(price*0.98,2)} – ${round(price,2)}" if action == "BUY" else None,
+        "stop_loss": round(dt["support"] * 0.98, 2),
+        "timeframe_bias": "daily", "price": price, "model": "heuristic", "ticker": ticker,
+    }
+    if avg_price:
+        result["avg_price"] = avg_price
+        result["pnl_pct"]   = round((price - avg_price) / avg_price * 100, 2)
+    return result
+
+
+def _run_comprehensive_analysis(ticker):
+    t = ticker.upper()
+    is_crypto = t in CRYPTO_TICKERS
+
+    tf_cfgs = [("15m","5d","15m"), ("1h","1mo","1h"), ("1d","1y","1d"), ("1wk","5y","1wk")]
+    tech_by_tf = {}
+    for label, period, interval in tf_cfgs:
+        r = _gather_tf_technicals(t, interval, period)
+        if r:
+            tech_by_tf[label] = r
+    if not tech_by_tf:
+        return {"error": f"no candle data available for {t}"}
+
+    price = (tech_by_tf.get("1d") or tech_by_tf.get("1h") or next(iter(tech_by_tf.values())))["price"]
+
+    sentiment = None
+    if not is_crypto:
+        try: sentiment = _stock_sentiment(t)
+        except Exception: pass
+
+    news_headlines = []
+    try:
+        items = yf.Ticker(t).news or []
+        news_headlines = [n.get("title","") for n in items[:8] if n.get("title")]
+    except Exception:
+        pass
+
+    social     = _cache_get(("social", t))
+    forecast   = _cache_get(("daily_forecast", t))
+    swing_data = _cache_get(("swing_scan",))
+    swing_entry = None
+    if swing_data:
+        best_tfs = swing_data.get("entries", {}).get(t, {})
+        if best_tfs:
+            swing_entry = max(best_tfs.values(), key=lambda x: x.get("score", 0))
+
+    state     = load_state()
+    avg_price = state.get("averages", {}).get(t)
+
+    # ── Build prompt ──────────────────────────────────────────────────────────
+    lines = [f"COMPREHENSIVE ANALYSIS: {t}", f"Current price: ${price}"]
+    if avg_price:
+        pnl = (price - avg_price) / avg_price * 100
+        lines.append(f"User cost basis: ${avg_price}  P&L: {pnl:+.1f}%")
+
+    lines.append("\n=== TECHNICALS (by TF) ===")
+    for tf_lbl, tech in tech_by_tf.items():
+        p_ = tech["price"]
+        rsi_tag  = " OVERSOLD"   if tech["rsi"] < 30 else " OVERBOUGHT" if tech["rsi"] > 70 else ""
+        bb_tag   = " nearLowerBB" if tech["bb_pct"] < 0.2 else " nearUpperBB" if tech["bb_pct"] > 0.8 else ""
+        cross    = " MACD CROSS UP" if tech["macd_cross_up"] else ""
+        ema_strs = []
+        for e_n, e_v in [("EMA20",tech.get("ema20")),("EMA50",tech.get("ema50")),("EMA200",tech.get("ema200"))]:
+            if e_v:
+                ema_strs.append(f"{e_n} {(p_-e_v)/e_v*100:+.1f}%")
+        lines.append(
+            f"[{tf_lbl}] RSI {tech['rsi']:.0f}{rsi_tag} | MACD {tech['macd_hist']:+.5f}{cross} | "
+            f"trend {tech['trend']} | vol {tech['vol_ratio']:.1f}x{bb_tag} | "
+            f"S ${tech['support']:.2f} R ${tech['resist']:.2f}" +
+            (f" | {' '.join(ema_strs)}" if ema_strs else "")
+        )
+
+    if sentiment:
+        ts_ = sentiment.get("tech",{}); ns_ = sentiment.get("news",{})
+        lines += ["\n=== SENTIMENT ===",
+                  f"Tech: {ts_.get('label','?')} score {ts_.get('score',0):+.2f}",
+                  f"News: {ns_.get('label','?')} ▲{ns_.get('buy_count',0)} ▼{ns_.get('sell_count',0)}"]
+    if social:
+        lines.append(f"Social: {social.get('label','?')} score {social.get('score','?')}/100")
+        if social.get("summary"):
+            lines.append(f"  Summary: {social['summary'][:130]}")
+    if news_headlines:
+        lines.append("\n=== RECENT NEWS ===")
+        lines += [f"  • {h[:120]}" for h in news_headlines[:6]]
+    if forecast:
+        lines += ["\n=== DAILY FORECAST ===",
+                  f"Forecast: {forecast.get('label','?')} ({forecast.get('confidence','?')}% conf)"]
+        if forecast.get("summary"):   lines.append(f"  {forecast['summary'][:160]}")
+        if forecast.get("key_risk"):  lines.append(f"  Risk: {forecast['key_risk'][:100]}")
+    if swing_entry:
+        lines += ["\n=== SWING SETUP ===",
+                  f"[{swing_entry.get('label','?')}] score {swing_entry.get('score','?')}/100  {', '.join(swing_entry.get('signals',[])[:4])}"]
+        if swing_entry.get("ai"):
+            ai_sw = swing_entry["ai"]
+            lines.append(f"  {ai_sw.get('setup_quality','?')} | entry window: {ai_sw.get('entry_window','?')}")
+
+    data_summary = "\n".join(lines)
+    prompt = (
+        f"{data_summary}\n\n"
+        "Give a comprehensive trading analysis based on ALL data above.\n"
+        "Respond with ONLY a JSON object (no markdown):\n"
+        '{"action":"BUY"|"SELL"|"HOLD"|"WATCH",'
+        '"conviction":"LOW"|"MEDIUM"|"HIGH",'
+        '"summary":"3-4 sentences covering all timeframes and data points",'
+        '"bull_case":"specific price levels and catalysts for upside",'
+        '"bear_case":"specific risks and levels for downside",'
+        '"price_target_1w":number,'
+        '"price_target_1m":number,'
+        '"support_1":number,"support_2":number,'
+        '"resistance_1":number,"resistance_2":number,'
+        '"key_level":"single most important price level or condition",'
+        '"entry_zone":"ideal buy zone if action is BUY/WATCH, else null",'
+        '"stop_loss":number,'
+        '"timeframe_bias":"which TF is most actionable right now"}'
+    )
+
+    if not ANTHROPIC_API_KEY:
+        return _heuristic_analysis(t, tech_by_tf, price, avg_price)
+
+    try:
+        r = _req.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01",
+                     "content-type": "application/json"},
+            json={"model": "claude-haiku-4-5-20251001", "max_tokens": 1000,
+                  "messages": [{"role": "user", "content": prompt}]},
+            timeout=30,
+        )
+        if not r.ok:
+            return _heuristic_analysis(t, tech_by_tf, price, avg_price)
+        text  = r.json().get("content", [{}])[0].get("text", "")
+        start = text.find("{"); end = text.rfind("}") + 1
+        if start >= 0 and end > start:
+            parsed = json.loads(text[start:end])
+            parsed.update({"price": price, "model": "claude-haiku", "ticker": t})
+            if avg_price:
+                parsed["avg_price"] = avg_price
+                parsed["pnl_pct"]   = round((price - avg_price) / avg_price * 100, 2)
+            return parsed
+    except Exception:
+        pass
+    return _heuristic_analysis(t, tech_by_tf, price, avg_price)
+
+
+@app.route("/api/analyze/<ticker>")
+def get_analyze(ticker):
+    t = ticker.upper()
+    cache_key = ("analyze", t)
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return jsonify(cached)
+    try:
+        result = _run_comprehensive_analysis(t)
+        _cache_set(cache_key, result, 300)  # 5-min cache
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 def _stock_sentiment(ticker):
     now_str = datetime.now().strftime("%H:%M")
     # TECH: RSI + MACD across 1h and 1d
