@@ -155,12 +155,15 @@ function _wireHover(wrapId, getPopupEl, isActive, buildContent) {
 
 // ── APPLY PROPHET TO PANELS ───────────────────────────────────────────────────
 function _applyProphetToPanels(dataByTF) {
-  // dataByTF: { "1h": {...}, "30m": {...} } — or null to clear all
   App.panels.forEach(p => {
-    p.prophetData = dataByTF ? (dataByTF[p.tf] || null) : null;
-    if (p.prophetData) { p._xOffset = 0; p._panLocked = false; p._yMin = null; p._yMax = null; }
-    if (p.candleData) drawMainChart(p, p.candleData);
-    if (p.candleData) drawUtility(p, p.candleData._liveCandles);
+    if (!dataByTF) {
+      p.prophetData = null;
+      if (p.candleData) { drawMainChart(p, p.candleData); drawUtility(p, p.candleData._liveCandles); }
+    } else {
+      // Fetch per-panel using p.ticker so each panel gets its own ticker's forecast,
+      // not the active panel's ticker that was used for the initial toggle fetch.
+      _onPanelTFChange(p, p._gen);
+    }
   });
 }
 
