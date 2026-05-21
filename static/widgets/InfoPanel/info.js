@@ -24,6 +24,37 @@ export function initNewsTooltip() {
   widget.addEventListener("mouseleave", () => tooltip.classList.remove("visible"));
 }
 
+// ── SOCIAL TOOLTIP ────────────────────────────────────────────────────────────
+export function initSocialTooltip() {
+  const widget  = document.getElementById("rp-social");
+  const tooltip = document.getElementById("social-tooltip");
+  widget.addEventListener("mouseenter", () => {
+    const d = App._socialData;
+    if (!d) return;
+    const dir = d.label === "BULLISH" ? "bull" : d.label === "BEARISH" ? "bear" : "";
+    let html = "";
+    if (d.summary) html += `<div class="st-summary">${d.summary}</div>`;
+    const themes = d.themes || [];
+    if (themes.length) {
+      html += `<div class="st-themes">${themes.map(t => `<span class="rp-theme-tag${dir ? " " + dir : ""}">${t}</span>`).join("")}</div>`;
+    }
+    const bulls = d.bull_signals || [], bears = d.bear_signals || [];
+    if (bulls.length) html += `<div class="st-sigs bull">${bulls.map(s => `<div>▲ ${s}</div>`).join("")}</div>`;
+    if (bears.length) html += `<div class="st-sigs bear">${bears.map(s => `<div>▼ ${s}</div>`).join("")}</div>`;
+    if (!html) return;
+    tooltip.innerHTML = html;
+    tooltip.classList.add("visible");
+  });
+  widget.addEventListener("mousemove", (e) => {
+    const pad = 10;
+    let left = e.clientX - tooltip.offsetWidth - pad;
+    if (left < pad) left = e.clientX + pad;
+    tooltip.style.left = left + "px";
+    tooltip.style.top = Math.min(e.clientY - 10, window.innerHeight - tooltip.offsetHeight - pad) + "px";
+  });
+  widget.addEventListener("mouseleave", () => tooltip.classList.remove("visible"));
+}
+
 // ── CONTEXT ROW ───────────────────────────────────────────────────────────────
 export function updateRpContextRow(ticker) {
   const t = ticker ?? getContextTicker();
@@ -94,6 +125,11 @@ export async function fetchSocial(ticker) {
   } catch (_) { _socialNA(); }
 }
 
+export function scheduleSocial() {
+  fetchSocial();
+  setInterval(() => fetchSocial(), 300000); // refresh every 5 min
+}
+
 function _socialNA() {
   const dot = document.getElementById("rp-social-dot");
   const lbl = document.getElementById("rp-social-label");
@@ -108,8 +144,6 @@ function updateSocialPanel(d) {
   const lbl = document.getElementById("rp-social-label");
   const ts  = document.getElementById("rp-social-ts");
   const det = document.getElementById("rp-social-detail");
-  const sum = document.getElementById("rp-social-summary");
-  const thm = document.getElementById("rp-social-themes");
   if (!dot) return;
 
   const color = d.color === "green" ? "green" : d.color === "red" ? "red" : "amber";
@@ -122,25 +156,7 @@ function updateSocialPanel(d) {
   const bc = d.bull_count ?? 0, br = d.bear_count ?? 0, pc = d.post_count ?? 0;
   if (det) det.textContent = `${score}/100  ▲${bc}/▼${br}  ${pc} posts`;
 
-  if (sum) {
-    if (d.summary) {
-      sum.textContent = d.summary;
-      sum.classList.add("visible");
-    } else {
-      sum.classList.remove("visible");
-    }
-  }
-
-  if (thm) {
-    thm.innerHTML = "";
-    const dir = d.label === "BULLISH" ? "bull" : d.label === "BEARISH" ? "bear" : "";
-    (d.themes || []).forEach(t => {
-      const span = document.createElement("span");
-      span.className = "rp-theme-tag" + (dir ? " " + dir : "");
-      span.textContent = t;
-      thm.appendChild(span);
-    });
-  }
+  App._socialData = d;
 }
 
 // ── DETAILS ───────────────────────────────────────────────────────────────────

@@ -76,23 +76,37 @@
 .rp-ts { margin-left:auto; font-size:9px; color:var(--text3); flex-shrink:0; }
 .rp-detail { font-size:9px; color:var(--text3); line-height:1.6; word-break:break-word; }
 
-/* ── SOCIAL SENTIMENT EXTRAS ── */
-.rp-social-summary {
-  font-size: 8.5px;
+/* ── SOCIAL TOOLTIP ── */
+#social-tooltip {
+  position: fixed;
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  padding: 9px 11px;
+  font-family: var(--font);
+  font-size: 10px;
   color: var(--text2);
-  line-height: 1.55;
-  margin-top: 5px;
-  padding-top: 5px;
-  border-top: 1px solid var(--border);
+  max-width: 280px;
+  z-index: 200;
+  pointer-events: none;
   display: none;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
 }
-.rp-social-summary.visible { display: block; }
-.rp-social-themes {
+#social-tooltip.visible { display: block; }
+.st-summary {
+  font-size: 9px;
+  color: var(--text2);
+  line-height: 1.6;
+  margin-bottom: 7px;
+}
+.st-themes {
   display: flex;
   flex-wrap: wrap;
   gap: 3px;
-  margin-top: 4px;
+  margin-bottom: 6px;
 }
+.st-sigs { font-size: 9px; line-height: 1.7; }
+.st-sigs.bull { color: var(--green); }
+.st-sigs.bear { color: var(--red); }
 .rp-theme-tag {
   font-size: 7.5px;
   letter-spacing: 0.5px;
