@@ -193,6 +193,7 @@ export async function togglePredProphet() {
   // Toggle off if already live
   if (_prophetCache && _prophetCache.ticker === ticker) {
     _prophetCache = null;
+    indicators.prophetActive = false; saveIndicators();
     _applyProphetToPanels(null);
     _syncProphetButton();
     return;
@@ -217,9 +218,11 @@ export async function togglePredProphet() {
 
   if (Object.keys(byTF).length) {
     _prophetCache = byTF[activeP.tf] || Object.values(byTF)[0];
+    indicators.prophetActive = true; saveIndicators();
     _applyProphetToPanels(byTF);
   } else {
     _prophetCache = null;
+    indicators.prophetActive = false; saveIndicators();
   }
 
   _prophetLoading = false;
@@ -249,6 +252,7 @@ export function initPredictions() {
   registerProphetRefresh(_onPanelTFChange);
   _syncARIMAButton();
   _syncProphetButton(false);
+  if (indicators.prophetActive) setTimeout(() => togglePredProphet(), 1500);
 
   _arimaPopupEl  = _getOrCreatePopup("pred-arima-popup-el");
   _prophetPopupEl = _getOrCreatePopup("pred-prophet-popup-el");
