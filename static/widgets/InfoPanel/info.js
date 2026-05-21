@@ -82,6 +82,67 @@ export function scheduleSentiment() {
   setInterval(() => fetchSentiment(), 60000);
 }
 
+// ── SOCIAL SENTIMENT ──────────────────────────────────────────────────────────
+export async function fetchSocial(ticker) {
+  const t = ticker || getContextTicker();
+  try {
+    const r = await fetch(API + `/api/social/${encodeURIComponent(t)}`);
+    if (!r.ok) { _socialNA(); return; }
+    const d = await r.json();
+    if (d.error) { _socialNA(); return; }
+    updateSocialPanel(d);
+  } catch (_) { _socialNA(); }
+}
+
+function _socialNA() {
+  const dot = document.getElementById("rp-social-dot");
+  const lbl = document.getElementById("rp-social-label");
+  const det = document.getElementById("rp-social-detail");
+  if (dot) dot.className = "rp-dot";
+  if (lbl) { lbl.className = "rp-badge"; lbl.textContent = "OFFLINE"; }
+  if (det) det.textContent = "unavailable";
+}
+
+function updateSocialPanel(d) {
+  const dot = document.getElementById("rp-social-dot");
+  const lbl = document.getElementById("rp-social-label");
+  const ts  = document.getElementById("rp-social-ts");
+  const det = document.getElementById("rp-social-detail");
+  const sum = document.getElementById("rp-social-summary");
+  const thm = document.getElementById("rp-social-themes");
+  if (!dot) return;
+
+  const color = d.color === "green" ? "green" : d.color === "red" ? "red" : "amber";
+  dot.className = "rp-dot " + color;
+  lbl.className = "rp-badge " + color;
+  lbl.textContent = d.label || "NEUTRAL";
+  if (ts) ts.textContent = d.last_update ? "@" + d.last_update : "";
+
+  const score = d.score ?? 50;
+  const bc = d.bull_count ?? 0, br = d.bear_count ?? 0, pc = d.post_count ?? 0;
+  if (det) det.textContent = `${score}/100  ▲${bc}/▼${br}  ${pc} posts`;
+
+  if (sum) {
+    if (d.summary) {
+      sum.textContent = d.summary;
+      sum.classList.add("visible");
+    } else {
+      sum.classList.remove("visible");
+    }
+  }
+
+  if (thm) {
+    thm.innerHTML = "";
+    const dir = d.label === "BULLISH" ? "bull" : d.label === "BEARISH" ? "bear" : "";
+    (d.themes || []).forEach(t => {
+      const span = document.createElement("span");
+      span.className = "rp-theme-tag" + (dir ? " " + dir : "");
+      span.textContent = t;
+      thm.appendChild(span);
+    });
+  }
+}
+
 // ── DETAILS ───────────────────────────────────────────────────────────────────
 export async function fetchDetails(ticker) {
   try {
@@ -179,6 +240,7 @@ window.rpRecalc = function() {
   const el = document.getElementById("rp-ctx-ticker");
   if (el) el.textContent = t;
   fetchSentiment(t);
+  fetchSocial(t);
   fetchDetails(t);
   import('../FundingOI/funding.js').then(m => m.fetchFunding(t));
   // Restart any Brain panels on this monitor so they scan the recalc'd ticker

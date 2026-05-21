@@ -21,6 +21,12 @@ try:
 except ImportError:
     _ets_ok = False
 import json, math, os, re, subprocess, time, threading, tempfile
+try:
+    from dotenv import load_dotenv as _load_dotenv
+    _load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+except ImportError:
+    pass  # dotenv not installed — set ANTHROPIC_API_KEY in shell env instead
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests as _req
 from datetime import datetime, timezone, timedelta
@@ -617,6 +623,22 @@ def get_sentiment_ticker(ticker):
     try:
         result = _stock_sentiment(t)
         _cache_set(cache_key, result, 300)
+        return jsonify(result)
+    except Exception as ex:
+        return jsonify({"error": str(ex)}), 500
+
+@app.route("/api/social/<ticker>")
+def get_social_sentiment(ticker):
+    t = ticker.upper()
+    cache_key = ("social", t)
+    cached = _cache_get(cache_key)
+    if cached:
+        return jsonify(cached)
+    try:
+        result = _sentiment.analyze_social(t, ANTHROPIC_API_KEY) if _sentiment else \
+                 {"score":50,"label":"NEUTRAL","color":"amber","summary":"Sentiment engine unavailable.",
+                  "themes":[],"bull_signals":[],"bear_signals":[],"bull_count":0,"bear_count":0,"post_count":0}
+        _cache_set(cache_key, result, 600)  # 10-min cache
         return jsonify(result)
     except Exception as ex:
         return jsonify({"error": str(ex)}), 500

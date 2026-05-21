@@ -9,9 +9,22 @@ Runs three sentiment sources in background threads:
 Call sentiment.start() once, then sentiment.get() anytime for current state.
 """
 
-import threading, time, re, warnings
+import threading, time, re, warnings, json
 from datetime import datetime
 import requests
+
+# ── ANTHROPIC / SOCIAL CONFIG ─────────────────────────────────────────────────
+ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
+ANTHROPIC_MODEL   = "claude-haiku-4-5-20251001"
+
+_STOCKTWITS_SYM = {
+    "BTC":"BTC.X","ETH":"ETH.X","BNB":"BNB.X","SOL":"SOL.X",
+    "DOGE":"DOGE.X","ADA":"ADA.X","XRP":"XRP.X","AVAX":"AVAX.X",
+    "DOT":"DOT.X","LINK":"LINK.X","MATIC":"MATIC.X",
+}
+
+def _st_sym(ticker):
+    return _STOCKTWITS_SYM.get(ticker.upper(), ticker.upper())
 
 warnings.filterwarnings("ignore")
 
@@ -246,3 +259,139 @@ def get() -> dict:
         s[key]["color"] = _label_color(s[key]["label"])
 
     return s
+
+
+# ── SOCIAL SENTIMENT (StockTwits + Claude) ────────────────────────────────────
+def _fetch_stocktwits(ticker):
+    sym = _st_sym(ticker)
+    try:
+        r = requests.get(
+            f"https://api.stocktwits.com/api/2/streams/symbol/{sym}.json",
+            params={"limit": 30},
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=8
+        )
+        r.raise_for_status()
+        msgs = r.json().get("messages", [])
+        posts, bull, bear = [], 0, 0
+        for m in msgs:
+            body = m.get("body", "").strip().replace("\n", " ")
+            if body:
+                posts.append(body[:200])
+            s = (m.get("entities") or {}).get("sentiment") or {}
+            basic = s.get("basic", "")
+            if basic == "Bullish":  bull += 1
+            elif basic == "Bearish": bear += 1
+        return posts, bull, bear
+    except Exception:
+        return [], 0, 0
+
+def _fetch_yf_news(ticker):
+    try:
+        import yfinance as yf
+        from server import resolve_ticker  # avoid circular import at module load
+        sym = resolve_ticker(ticker)
+        items = yf.Ticker(sym).news or []
+        return [i.get("content", {}).get("title") or i.get("title", "") for i in items[:8] if i]
+    except Exception:
+        return []
+
+def _claude_analyze(ticker, posts, news_titles, bull, bear, api_key):
+    posts_text = "\n".join(f"- {p}" for p in posts[:20]) or "(no posts retrieved)"
+    news_text  = "\n".join(f"- {h}" for h in news_titles[:6]) or "(no news retrieved)"
+    prompt = (
+        f"Analyze current market sentiment for {ticker.upper()}.\n\n"
+        f"StockTwits posts ({bull} bullish / {bear} bearish labels):\n{posts_text}\n\n"
+        f"Recent news headlines:\n{news_text}\n\n"
+        "Reply with ONLY a JSON object — no markdown, no explanation:\n"
+        '{"score":75,"label":"BULLISH","summary":"2 sentence plain-English why sentiment is what it is.",'
+        '"themes":["theme1","theme2","theme3"],'
+        '"bull_signals":["pattern1","pattern2"],'
+        '"bear_signals":["pattern1"]}'
+    )
+    resp = requests.post(
+        ANTHROPIC_API_URL,
+        headers={
+            "x-api-key":           api_key,
+            "anthropic-version":   "2023-06-01",
+            "content-type":        "application/json",
+        },
+        json={
+            "model":      ANTHROPIC_MODEL,
+            "max_tokens": 512,
+            "messages":   [{"role": "user", "content": prompt}],
+        },
+        timeout=20,
+    )
+    resp.raise_for_status()
+    text = resp.json()["content"][0]["text"].strip()
+    # Strip markdown code fences if present
+    text = re.sub(r"^```[a-z]*\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*```$", "", text)
+    return json.loads(text)
+
+def analyze_social(ticker, api_key=None):
+    """
+    Fetch StockTwits + yfinance news, run through Claude for structured sentiment.
+    Returns dict with score, label, summary, themes, bull_signals, bear_signals,
+    bull_count, bear_count, post_count, error (if any).
+    """
+    now_str = datetime.now().strftime("%H:%M")
+    posts, bull, bear = _fetch_stocktwits(ticker)
+
+    news_titles = []
+    try:
+        import yfinance as yf
+        # resolve crypto suffix
+        sym = ticker.upper()
+        if sym in ("BTC","ETH","BNB","SOL","DOGE","ADA","XRP","AVAX","DOT","LINK","MATIC"):
+            sym += "-USD"
+        items = yf.Ticker(sym).news or []
+        news_titles = [
+            (i.get("content") or {}).get("title") or i.get("title", "")
+            for i in items[:8] if i
+        ]
+        news_titles = [t for t in news_titles if t]
+    except Exception:
+        pass
+
+    # Fallback if no API key: keyword-only scoring
+    if not api_key or api_key.startswith("paste_"):
+        total = bull + bear
+        score = round(50 + (bull - bear) / max(total, 1) * 40) if total else 50
+        label = "BULLISH" if score >= 60 else "BEARISH" if score <= 40 else "NEUTRAL"
+        color = "green" if label == "BULLISH" else "red" if label == "BEARISH" else "amber"
+        return {
+            "score": score, "label": label, "color": color,
+            "summary": f"StockTwits: {bull} bullish / {bear} bearish posts (no AI key).",
+            "themes": [], "bull_signals": [], "bear_signals": [],
+            "bull_count": bull, "bear_count": bear, "post_count": len(posts),
+            "last_update": now_str,
+        }
+
+    try:
+        result = _claude_analyze(ticker, posts, news_titles, bull, bear, api_key)
+        label  = result.get("label", "NEUTRAL").upper()
+        score  = int(result.get("score", 50))
+        color  = "green" if label == "BULLISH" else "red" if label == "BEARISH" else "amber"
+        return {
+            "score":        score,
+            "label":        label,
+            "color":        color,
+            "summary":      result.get("summary", ""),
+            "themes":       result.get("themes", [])[:4],
+            "bull_signals": result.get("bull_signals", [])[:3],
+            "bear_signals": result.get("bear_signals", [])[:3],
+            "bull_count":   bull,
+            "bear_count":   bear,
+            "post_count":   len(posts),
+            "last_update":  now_str,
+        }
+    except Exception as e:
+        return {
+            "score": 50, "label": "NEUTRAL", "color": "amber",
+            "summary": f"Analysis unavailable: {e}",
+            "themes": [], "bull_signals": [], "bear_signals": [],
+            "bull_count": bull, "bear_count": bear, "post_count": len(posts),
+            "last_update": now_str, "error": str(e),
+        }

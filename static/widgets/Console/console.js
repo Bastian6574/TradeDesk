@@ -24,10 +24,12 @@ const LIVE_TFS = [
 export function startConsole(p) {
   if (p._conTimer) { clearInterval(p._conTimer); p._conTimer = null; }
   _buildDOM(p);
-  p._conActive    = true;
-  p._conLive      = false;
-  p._conCooldowns = new Map();
-  p._scanCount    = 0;
+  p._conActive      = true;
+  p._conLive        = false;
+  p._conCooldowns   = new Map();
+  p._scanCount      = 0;
+  p._conPrevStState = null;
+  p._conPrevLtState = null;
   _emit(p, '#6a8099', 'SYS', `monitoring ${p.ticker} · scanning 15m 30m 1h 1d`, null, null, 'st');
   _runScan(p);
   p._conTimer = setInterval(() => _runScan(p), SCAN_MS);
@@ -282,11 +284,18 @@ async function _runScan(p) {
     } catch(_e) {}
   }
 
-  // Compute market states
+  // Compute market states and detect transitions
   const stState = _marketState(stCandles);
   const ltState = _marketState(ltCandles);
   _updateSectionState(p.idx, 'st', stState);
   _updateSectionState(p.idx, 'lt', ltState);
+
+  if (stState && p._conPrevStState && stState !== p._conPrevStState)
+    _fetchAndEmitSocial(p, 'st', stState, p._conPrevStState);
+  if (ltState && p._conPrevLtState && ltState !== p._conPrevLtState)
+    _fetchAndEmitSocial(p, 'lt', ltState, p._conPrevLtState);
+  if (stState) p._conPrevStState = stState;
+  if (ltState) p._conPrevLtState = ltState;
 
   // If live + short-term market is violent, re-scan with 1m/5m
   if (p._conLive && stState === 'VIOLENT') {
@@ -571,6 +580,33 @@ function _detectMABounce(candles, cfg) {
         autoAction:{ type:'chart', tf:cfg.tf, utility:'macd' } });
   }
   return out;
+}
+
+// ── SOCIAL SENTIMENT ON STATE TRANSITION ─────────────────────────────────────
+async function _fetchAndEmitSocial(p, section, newState, prevState) {
+  const stateColor = _STATE_COLOR[newState] || '#6a8099';
+  _emit(p, stateColor, `◎ STATE → ${newState}`,
+    `${prevState} → ${newState} · querying social sentiment…`, null, null, section);
+  try {
+    const r = await fetch(`/api/social/${encodeURIComponent(p.ticker)}`);
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.error || !d.label) return;
+    const dir   = d.label === 'BULLISH' ? 'bull' : d.label === 'BEARISH' ? 'bear' : null;
+    const color = d.label === 'BULLISH' ? '#00d47e' : d.label === 'BEARISH' ? '#f03e3e' : '#ff9500';
+    const themes = (d.themes || []).slice(0, 3).join(' · ');
+    _emit(p, color, `◎ SOCIAL ${d.label}`,
+      `${d.score}/100  ▲${d.bull_count || 0}/▼${d.bear_count || 0}  ${themes}`,
+      d.score, dir, section);
+    if (d.summary) {
+      _emit(p, '#6a8099', '  ↳', d.summary, null, null, section);
+    }
+    const signals = [...(d.bull_signals || []), ...(d.bear_signals || [])].slice(0, 3);
+    signals.forEach(sig => {
+      const isBull = (d.bull_signals || []).includes(sig);
+      _emit(p, isBull ? '#00d47e80' : '#f03e3e80', '    ·', sig, null, null, section);
+    });
+  } catch (_) {}
 }
 
 function _detectIceberg(ticker) {

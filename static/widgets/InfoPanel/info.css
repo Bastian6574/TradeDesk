@@ -76,6 +76,34 @@
 .rp-ts { margin-left:auto; font-size:9px; color:var(--text3); flex-shrink:0; }
 .rp-detail { font-size:9px; color:var(--text3); line-height:1.6; word-break:break-word; }
 
+/* ── SOCIAL SENTIMENT EXTRAS ── */
+.rp-social-summary {
+  font-size: 8.5px;
+  color: var(--text2);
+  line-height: 1.55;
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--border);
+  display: none;
+}
+.rp-social-summary.visible { display: block; }
+.rp-social-themes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 4px;
+}
+.rp-theme-tag {
+  font-size: 7.5px;
+  letter-spacing: 0.5px;
+  padding: 1px 5px;
+  border: 1px solid var(--border2);
+  color: var(--text3);
+  white-space: nowrap;
+}
+.rp-theme-tag.bull { border-color: #00d47e55; color: #00d47e; }
+.rp-theme-tag.bear { border-color: #f03e3e55; color: #f03e3e; }
+
 /* ── NEWS TOOLTIP ── */
 #news-tooltip { position:fixed; background:var(--bg2); border:1px solid var(--border2); padding:9px 11px; font-family:var(--font); font-size:10px; color:var(--text2); line-height:1.8; max-width:300px; z-index:200; pointer-events:none; display:none; box-shadow:0 4px 16px rgba(0,0,0,0.5); }
 #news-tooltip.visible { display:block; }

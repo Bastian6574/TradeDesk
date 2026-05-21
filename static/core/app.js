@@ -5,7 +5,7 @@ import { loadMainChart, getMonitorPreset, restorePreset, updateMonitorTabs, draw
 import { loadPineTS, loadPineFileScripts } from '../widgets/MainChart/pine.js';
 import { drawUtility } from '../widgets/UtilityPanel/utility.js';
 import { renderWatchlist, refreshWatchlistMinis, initSidebarResize } from '../widgets/Sidebar/sidebar.js';
-import { initNewsTooltip, scheduleSentiment, scheduleDetails, initIndicatorUI, updateRpContextRow } from '../widgets/InfoPanel/info.js';
+import { initNewsTooltip, scheduleSentiment, scheduleDetails, fetchSocial, initIndicatorUI, updateRpContextRow } from '../widgets/InfoPanel/info.js';
 import { initPredictions } from '../widgets/Predictions/predictions.js';
 import { initFunding } from '../widgets/FundingOI/funding.js';
 
@@ -54,6 +54,7 @@ async function init() {
   initNewsTooltip();
   scheduleSentiment();
   scheduleDetails();
+  fetchSocial();
   scheduleRefresh();
   const preset = getMonitorPreset(App.state.active_monitor);
   restorePreset(preset);
