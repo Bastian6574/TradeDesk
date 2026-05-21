@@ -890,11 +890,10 @@ function buildPriceLinePlugin(p, candles) {
       ctx.setLineDash([]);
       const cW = chart.width, cH = chart.height;
       const labelW = Math.max(42, cW - right - 4), labelH = 16, labelX = right + 2;
-      const bgColor = bull ? "#004d2a" : "#6e1010";
-      ctx.fillStyle = bgColor; ctx.fillRect(labelX, yPos - labelH / 2, labelW, labelH);
-      ctx.strokeStyle = color; ctx.lineWidth = 1;
-      ctx.strokeRect(labelX, yPos - labelH / 2, labelW, labelH);
-      ctx.fillStyle = "#ffffff"; ctx.font = "bold 10px 'JetBrains Mono'";
+      // Solid color fill, black text — matches reference dashboard style
+      ctx.fillStyle = color; ctx.fillRect(labelX, yPos - labelH / 2, labelW, labelH);
+      ctx.beginPath(); ctx.moveTo(labelX, yPos - 4); ctx.lineTo(labelX - 5, yPos); ctx.lineTo(labelX, yPos + 4); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#000"; ctx.font = "bold 10px 'JetBrains Mono'";
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillText(fmt(price), labelX + labelW / 2, yPos);
       const rem = candleTimeRemaining(p.tf, last.t);
@@ -907,11 +906,12 @@ function buildPriceLinePlugin(p, candles) {
         const belowY = yPos + labelH / 2 + 2;
         const rawTy = (belowY + boxH < cH - 4) ? belowY : yPos - labelH / 2 - boxH - 2;
         const ty = Math.max(2, Math.min(cH - boxH - 2, rawTy));
-        ctx.fillStyle = bgColor + "ee";
+        // Darker grey background, solid colored border, colored text
+        ctx.fillStyle = "#1a2230";
         ctx.fillRect(tx - tw / 2 - 4, ty - 1, tw + 8, boxH);
-        ctx.strokeStyle = color + "66"; ctx.lineWidth = 1;
+        ctx.strokeStyle = color; ctx.lineWidth = 0.5;
         ctx.strokeRect(tx - tw / 2 - 4, ty - 1, tw + 8, boxH);
-        ctx.fillStyle = "#ffffff";
+        ctx.fillStyle = color;
         ctx.fillText(rem, tx, ty + 1);
       }
       ctx.restore();
@@ -1569,7 +1569,16 @@ export function toggleWidgetSettings(idx) {
 
 function _buildSettingsPopup(p, popup) {
   const ws = p.widgetSettings, i = p.idx, mode = p.widgetMode || "candles";
+  const curMs = App.updateIntervalMs;
+  const rates = [100, 250, 500, 1000];
   let html = '<div class="wsp-title">PANEL SETTINGS</div>';
+  html += `
+    <div class="wsp-row">
+      <span class="wsp-lbl">UPDATE RATE</span>
+      <div style="display:flex;gap:4px;">
+        ${rates.map(ms => `<button class="wsp-rate-btn${curMs===ms?' active':''}" onclick="setWidgetSetting(${i},'updateRate',${ms})">${ms<1000?ms+'ms':'1s'}</button>`).join('')}
+      </div>
+    </div>`;
   if (mode === "candles") {
     html += `
       <div class="wsp-row">
@@ -1615,6 +1624,15 @@ function _buildSettingsPopup(p, popup) {
 export function setWidgetSetting(idx, key, value) {
   const p = App.panels[idx]; if (!p) return;
   const v = typeof value === "boolean" ? value : typeof value === "string" ? parseFloat(value) : value;
+  if (key === "updateRate") {
+    App.updateIntervalMs = v;
+    App.state.update_interval = v;
+    startPriceFeed();
+    syncState();
+    // Refresh button states in popup
+    document.querySelectorAll(".wsp-rate-btn").forEach(b => b.classList.toggle("active", parseInt(b.textContent) === v || (b.textContent === "1s" && v === 1000)));
+    return;
+  }
   p.widgetSettings[key] = v;
   const valEl = document.getElementById("wsp-" + key + "-" + idx);
   if (valEl) valEl.textContent = key === "pineOpacity" ? Math.round(v * 100) + "%" : v + "px";

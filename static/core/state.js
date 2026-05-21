@@ -8,7 +8,7 @@ export const App = {
     averages: {},
     monitors: {},
     active_monitor: 1,
-    update_interval: 1000,
+    update_interval: 250,
     chart_zoom: 150,
     default_tf: "30m",
     rsi_period: 14,
@@ -19,7 +19,7 @@ export const App = {
   layoutRows: [[0]],    // array of rows; each row = array of panel indices
   activeIdx: 0,
   currentLayout: "1",
-  updateIntervalMs: 1000,
+  updateIntervalMs: 250,
   miniCharts: {},
   refreshTimer: null,
   newsHeadlines: [],
@@ -74,7 +74,7 @@ export async function loadState() {
   const defaults = {
     watchlist: ["BTC","ANET","MSTR","ORCL","PLTR"],
     averages: {}, monitors: {}, active_monitor: 1,
-    update_interval: 1000, chart_zoom: 150, default_tf: "30m",
+    update_interval: 250, chart_zoom: 150, default_tf: "30m",
     rsi_period: 14, utility_height: 90, sidebar_width: 260,
   };
   try {

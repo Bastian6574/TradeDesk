@@ -64,6 +64,9 @@
 .wsp-range { flex:1; height:2px; accent-color:var(--amber); cursor:pointer; margin:0; }
 .wsp-val { font-size:8px; color:var(--amber); min-width:30px; text-align:right; letter-spacing:0.5px; }
 .wsp-empty { padding:12px 10px; font-size:9px; color:var(--text3); letter-spacing:1px; text-align:center; }
+.wsp-rate-btn { padding:2px 7px; background:var(--bg3); border:1px solid var(--border); color:var(--text3); cursor:pointer; font-family:var(--font); font-size:8px; letter-spacing:0.5px; transition:all 0.15s; }
+.wsp-rate-btn:hover { border-color:var(--border2); color:var(--text2); }
+.wsp-rate-btn.active { border-color:var(--amber); color:var(--amber); }
 #charts-container.layout-4 .status-item,
 #charts-container.layout-4 .zoom-indicator { display:none; }
 
