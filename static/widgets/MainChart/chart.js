@@ -794,8 +794,8 @@ function _xBounds(p, candles) {
 function buildChartOptions(p, candles, minP, maxP, isLive, xStart = 0, fixedZoom = 0) {
   let xMin, xMax;
   if (isLive && fixedZoom > 0) {
-    xMin = xStart - 0.3;
-    xMax = xStart + candles.length - 0.7;
+    xMin = -0.3;
+    xMax = fixedZoom - 0.7;
   } else {
     ({ xMin, xMax } = _xBounds(p, candles));
   }
