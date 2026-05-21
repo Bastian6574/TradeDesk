@@ -13,6 +13,51 @@ function _extras(p) {
 }
 import { PINE_SCRIPTS, pineActive, loadPineTS, getCustomScript } from '../MainChart/pine.js';
 
+// ── Y-AXIS DRAG ───────────────────────────────────────────────────────────────
+function _ensureYDrag(p) {
+  const wrap = document.getElementById("utility-canvas-wrap-" + p.idx);
+  if (!wrap || wrap._yDragBound) return;
+  wrap._yDragBound = true;
+
+  let startY = null, startZoom = 1.0;
+
+  const _onYAxis = (e) => {
+    const canvas = document.getElementById("utility-canvas-" + p.idx);
+    if (!canvas || !p.rsiChart?.chartArea) return false;
+    const rect = canvas.getBoundingClientRect();
+    return (e.clientX - rect.left) >= p.rsiChart.chartArea.right;
+  };
+
+  wrap.addEventListener("mousedown", (e) => {
+    if (e.button !== 0 || !_onYAxis(e)) return;
+    e.preventDefault();
+    startY = e.clientY;
+    startZoom = p.widgetSettings?.utilityYZoom ?? 1.0;
+  });
+
+  wrap.addEventListener("mousemove", (e) => {
+    wrap.style.cursor = _onYAxis(e) ? "ns-resize" : "";
+  });
+
+  wrap.addEventListener("dblclick", (e) => {
+    if (!_onYAxis(e)) return;
+    if (!p.widgetSettings) p.widgetSettings = {};
+    p.widgetSettings.utilityYZoom = 1.0;
+    drawUtility(p, p._lastUtilityCandles);
+  });
+
+  window.addEventListener("mousemove", (e) => {
+    if (startY === null) return;
+    const dy = startY - e.clientY;                      // up = positive = zoom in
+    const zoom = Math.max(1.0, Math.min(12, startZoom * Math.pow(1.018, dy)));
+    if (!p.widgetSettings) p.widgetSettings = {};
+    p.widgetSettings.utilityYZoom = zoom;
+    drawUtility(p, p._lastUtilityCandles);
+  });
+
+  window.addEventListener("mouseup", () => { startY = null; });
+}
+
 export function drawUtility(p, candles) {
   if (!candles || !candles.length) return;
   p._lastUtilityCandles = candles;
@@ -105,6 +150,7 @@ export function drawRSI(p, candles) {
     },
     plugins: [zonesPlugin]
   });
+  _ensureYDrag(p);
 }
 
 // ── MACD ──────────────────────────────────────────────────────────────────────
@@ -199,6 +245,7 @@ export function drawMACD(p, candles) {
   });
   p.rsiChart._hist = hist;
   p.rsiChart._xStart = xStart;
+  _ensureYDrag(p);
 }
 
 // ── PINE OSCILLATOR ───────────────────────────────────────────────────────────
@@ -262,4 +309,5 @@ export function renderPineOscillator(p, plots, candles) {
       }
     }
   });
+  _ensureYDrag(p);
 }
