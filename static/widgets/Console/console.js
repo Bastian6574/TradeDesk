@@ -7,8 +7,12 @@ const COOLDOWN  = 300_000; // 5-min per signal key
 const _cache    = new Map(); // ticker_tf → { ts, data }
 const _outlined = new Map(); // panelIdx → { color, ts, clearTimer }
 
-let _swingData  = null;   // last fetched swing scan result
-let _swingFetch = 0;      // timestamp of last fetch
+let _swingData      = null;   // last fetched swing scan result
+let _swingFetch     = 0;      // timestamp of last fetch
+let _swingProphetMap = {};    // ticker → { label, score, ts }
+
+const _prophetCache     = new Map(); // ticker → { ts, label, score }
+const PROPHET_CACHE_TTL = 1_800_000; // 30 min
 
 const TFS = [
   { tf: '15m', period: '5d',  interval: '15m', ttl:  60_000, section: 'st' },
@@ -27,12 +31,13 @@ const LIVE_TFS = [
 export function startConsole(p) {
   if (p._conTimer) { clearInterval(p._conTimer); p._conTimer = null; }
   _buildDOM(p);
-  p._conActive         = true;
-  p._conLive           = false;
-  p._conCooldowns      = new Map();
-  p._scanCount         = 0;
-  p._conPrevStState    = null;
-  p._conPrevLtState    = null;
+  p._conActive          = true;
+  p._conLive            = false;
+  p._conCooldowns       = new Map();
+  p._avgAbove           = new Map();
+  p._scanCount          = 0;
+  p._conPrevStState     = null;
+  p._conPrevLtState     = null;
   p._conPrevSocialLabel = null;
   _emit(p, '#6a8099', 'SYS', `monitoring ${p.ticker} · scanning 15m 30m 1h 1d`, null, null, 'st');
   setTimeout(() => _checkSwingEntries(p), 2000); // defer so Brain initialises first
@@ -76,9 +81,10 @@ const _GUIDE = [
   { badge: '⚠⚠⚠ SELL BREAK [TICKER]', color: '#f03e3e', desc: 'Price just broke BELOW your set average. Key support level lost.' },
   { badge: '◆ AVG BREAK ↑ [TICKER]',   color: '#00d47e', desc: 'Price below your average with bullish momentum. Probability-weighted chance of reclaiming your cost basis.' },
   { badge: '◆◆ AVG RECLAIM [TICKER]',  color: '#00d47e', desc: 'Price just reclaimed your set average. Key resistance level recovered.' },
-  { badge: '◆ [1H] TICKER RISKY ENTRY',   color: '#4dabf7', desc: '1-hour timeframe swing setup. RSI/MACD/volume confluence. High-risk, fast-moving entry — confirm before trading.' },
-  { badge: '◆◆ [1D] TICKER GREAT ENTRY',  color: '#a9e34b', desc: 'Daily timeframe swing setup. Strong technical confluence. Good risk/reward entry point for medium-term swing.' },
-  { badge: '◆◆◆ [1W] TICKER SUPERB ENTRY',color: '#ffd43b', desc: 'Weekly timeframe setup. Rare, high-conviction long-term entry. Best risk/reward — consider larger position.' },
+  { badge: '◆ [1H] TICKER RISKY ENTRY',    color: '#4dabf7', desc: '1-hour timeframe swing setup. RSI/MACD/volume confluence. High-risk, fast-moving entry — confirm before trading.' },
+  { badge: '◆◆ [1D] TICKER GREAT ENTRY',   color: '#a9e34b', desc: 'Daily timeframe swing setup. Strong technical confluence. Good risk/reward entry point for medium-term swing.' },
+  { badge: '◆◆◆ [1W] TICKER SUPERB ENTRY', color: '#ffd43b', desc: 'Weekly timeframe setup. Rare, high-conviction long-term entry. Best risk/reward — consider larger position.' },
+  { badge: '⚡ CONFLICT [TICKER]',          color: '#aa8844', desc: 'Swing score ≥ 68 but Prophet forecast is bearish. Technicals and AI forecast disagree — consider waiting for confirmation before entering.' },
 ];
 
 // ── DOM ───────────────────────────────────────────────────────────────────────
@@ -927,22 +933,42 @@ function _detectMABounce(candles, cfg) {
 }
 
 // ── SWING ENTRY SCANNER ───────────────────────────────────────────────────────
+async function _fetchProphetBias(ticker) {
+  const hit = _prophetCache.get(ticker);
+  if (hit && Date.now() - hit.ts < PROPHET_CACHE_TTL) return hit;
+  try {
+    const r = await fetch(`/api/prophet/${encodeURIComponent(ticker)}?interval=1d`);
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (d.error || d.bias_label == null) return null;
+    const entry = { ts: Date.now(), label: d.bias_label, score: d.bias_score ?? 0 };
+    _prophetCache.set(ticker, entry);
+    return entry;
+  } catch (_) { return null; }
+}
+
 async function _checkSwingEntries(p, force = false) {
   const now = Date.now();
   if (!force && _swingData && (now - _swingFetch) < 1_800_000) {
-    _renderSwingEntries(p, _swingData);
+    _renderSwingEntries(p, _swingData, _swingProphetMap);
     return;
   }
   try {
     const res = await fetch(`/api/swing_scan${force ? '?force=1' : ''}`);
     if (!res.ok) return;
-    _swingData = await res.json();
+    _swingData  = await res.json();
     _swingFetch = Date.now();
-    _renderSwingEntries(p, _swingData);
+    const tickers = Object.keys(_swingData.entries || {});
+    const prophetMap = {};
+    await Promise.allSettled(
+      tickers.map(t => _fetchProphetBias(t).then(r => { if (r) prophetMap[t] = r; }))
+    );
+    _swingProphetMap = prophetMap;
+    _renderSwingEntries(p, _swingData, prophetMap);
   } catch (_e) {}
 }
 
-function _renderSwingEntries(p, data) {
+function _renderSwingEntries(p, data, prophetMap = {}) {
   const log = document.getElementById('con-log-sw-' + p.idx);
   if (!log) return;
   log.innerHTML = '';
@@ -967,19 +993,25 @@ function _renderSwingEntries(p, data) {
   }
 
   for (const e of all) {
-    const color  = e.tier === 'superb' ? '#ffd43b' : e.tier === 'great' ? '#a9e34b' : '#4dabf7';
-    const stars  = e.tier === 'superb' ? '◆◆◆' : e.tier === 'great' ? '◆◆' : '◆';
-    const ai     = e.ai;
-    const conv   = ai?.conviction  ? ` · AI:${ai.conviction}` : '';
-    const ew     = ai?.entry_window ? ` · ${ai.entry_window}` : '';
-    const detail = `${e.signals.slice(0,3).join(' · ')}${conv}${ew}`;
-    const score  = e.score;
+    const prophet      = prophetMap[e.ticker];
+    const prophetBear  = prophet && prophet.score < -0.15;
+    const prophetStrong= prophet && prophet.score < -0.30;
+
+    const baseColor = e.tier === 'superb' ? '#ffd43b' : e.tier === 'great' ? '#a9e34b' : '#4dabf7';
+    const color     = prophetStrong ? '#6a8099' : prophetBear ? '#aa8844' : baseColor;
+    const stars     = e.tier === 'superb' ? '◆◆◆' : e.tier === 'great' ? '◆◆' : '◆';
+    const ai        = e.ai;
+    const conv      = ai?.conviction  ? ` · AI:${ai.conviction}` : '';
+    const ew        = ai?.entry_window ? ` · ${ai.entry_window}` : '';
+    const prophetTag= prophetStrong ? ' ⚡⚡' : prophetBear ? ' ⚡' : '';
+    const detail    = `${e.signals.slice(0,3).join(' · ')}${conv}${ew}`;
+    const score     = e.score;
 
     const row = document.createElement('div');
     row.className = 'con-row';
     row.innerHTML =
       `<button class="con-goto-btn" onclick="window.loadSwingChart('${e.ticker}','${e.tf}')" title="Load chart · ${e.tf}">↩</button>` +
-      `<span class="con-badge" style="color:${color}">${_esc(stars)} [${_esc(e.label)}] ${_esc(e.ticker)}</span>` +
+      `<span class="con-badge" style="color:${color}">${_esc(stars)} [${_esc(e.label)}] ${_esc(e.ticker)}${prophetTag}</span>` +
       `<span class="con-detail">${_esc(detail)}</span>` +
       `<span class="con-weight" style="color:${color}80">${score}%</span>`;
     log.appendChild(row);
@@ -992,14 +1024,26 @@ function _renderSwingEntries(p, data) {
         p._conCooldowns.set(ck, now + 14_400_000); // 4h cooldown
         const sec = e.section || (e.tf === '1h' ? 'st' : 'lt');
         const riskLabel = e.tier === 'superb' ? 'SUPERB ENTRY' : e.tier === 'great' ? 'GREAT ENTRY' : 'RISKY ENTRY';
-        _emit(p, color, `${stars} [${e.label}] ${e.ticker}`,
-          `${riskLabel} · ${e.signals.slice(0,2).join(' · ')}${conv}`,
-          score, 'bull', sec);
-        if (ai?.setup_quality) {
-          _emit(p, `${color}80`, '  ↳ AI', ai.setup_quality +
-            (ai.entry_window ? `  ·  entry ${ai.entry_window}` : '') +
-            (ai.confirm_level ? `  ·  confirm: ${ai.confirm_level}` : ''),
-            null, null, sec);
+
+        if (prophetBear) {
+          // Prophet conflicts — demote signal, warn instead of recommending
+          const warnColor = prophetStrong ? '#6a8099' : '#aa8844';
+          _emit(p, warnColor, `⚡ CONFLICT ${e.ticker}`,
+            `${riskLabel} (score ${score}%) BUT prophet ${prophet.label} (${prophet.score.toFixed(2)}) — wait for confirmation`,
+            score, null, sec);
+        } else {
+          _emit(p, color, `${stars} [${e.label}] ${e.ticker}`,
+            `${riskLabel} · ${e.signals.slice(0,2).join(' · ')}${conv}`,
+            score, 'bull', sec);
+          if (ai?.setup_quality) {
+            _emit(p, `${color}80`, '  ↳ AI', ai.setup_quality +
+              (ai.entry_window ? `  ·  entry ${ai.entry_window}` : '') +
+              (ai.confirm_level ? `  ·  confirm: ${ai.confirm_level}` : ''),
+              null, null, sec);
+          }
+          if (prophet && prophet.score > 0.15) {
+            _emit(p, `${color}60`, '  ↳ ⚡', `Prophet confirms: ${prophet.label}`, null, null, sec);
+          }
         }
       }
     }
@@ -1018,8 +1062,9 @@ function _emitRaw(log, color, badge, detail) {
 
 // ── AVERAGE BREAK FORECAST ────────────────────────────────────────────────────
 const _AVG_CFGS = [
-  { tf: '1h', period: '1mo', interval: '1h', ttl: 300_000, section: 'st' },
-  { tf: '1d', period: '1y',  interval: '1d', ttl: 600_000, section: 'lt' },
+  { tf: '15m', period: '5d',  interval: '15m', ttl:  60_000, section: 'st' },
+  { tf: '1h',  period: '1mo', interval: '1h',  ttl: 300_000, section: 'st' },
+  { tf: '1d',  period: '1y',  interval: '1d',  ttl: 600_000, section: 'lt' },
 ];
 
 async function _scanAverageBreaks(p) {
@@ -1041,13 +1086,19 @@ async function _analyzeAvgTF(p, ticker, avgPrice, cfg) {
   const closes = candles.map(c => c.c);
   const n      = closes.length;
   const price  = closes[n - 1];
-  const prev   = closes[n - 2];
 
-  const above          = price > avgPrice;
-  const distPct        = Math.abs(price - avgPrice) / avgPrice * 100;
-  const distAbs        = Math.abs(price - avgPrice);
-  const justCrossedDn  = prev > avgPrice && price <= avgPrice;
-  const justCrossedUp  = prev < avgPrice && price >= avgPrice;
+  const above   = price > avgPrice;
+  const distPct = Math.abs(price - avgPrice) / avgPrice * 100;
+  const distAbs = Math.abs(price - avgPrice);
+
+  // Stateful crossing detection — candle n-2/n-1 comparison misses breaks
+  // that happened before Brain started or between cached fetches
+  if (!p._avgAbove) p._avgAbove = new Map();
+  const stateKey     = `${ticker}_${cfg.tf}`;
+  const wasAbove     = p._avgAbove.get(stateKey); // undefined on first scan
+  p._avgAbove.set(stateKey, above);
+  const justCrossedDn = wasAbove === true  && !above;
+  const justCrossedUp = wasAbove === false && above;
 
   // ── Indicators ──────────────────────────────────────────────────────────────
   const rsiVal = _rsi(closes, 14);
