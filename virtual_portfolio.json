@@ -1,0 +1,41 @@
+{
+  "capital": 9300.0,
+  "initial_capital": 10000.0,
+  "positions": [
+    {
+      "ticker": "GME",
+      "entry_price": 22.35,
+      "shares": 31.31991,
+      "cost_basis": 700.0,
+      "entry_date": "2026-05-21 19:04",
+      "tf": "1d",
+      "tier": "great",
+      "score": 73,
+      "conviction": "MEDIUM",
+      "target": 24.585,
+      "stop_loss": 21.2325,
+      "trail_armed": false
+    }
+  ],
+  "closed_trades": [],
+  "stats": {
+    "total_trades": 0,
+    "winning_trades": 0,
+    "total_pnl_usd": 0.0,
+    "win_rate": 0.0,
+    "peak_capital": 10000.0,
+    "max_drawdown": 0.0
+  },
+  "bot_active": true,
+  "last_eval": "2026-05-21T19:49:31.913039",
+  "log": [
+    {
+      "ts": "05-21 19:04",
+      "msg": "BUY  GME  @$22.35  31.3199sh  great  score=73  tgt=$24.59  sl=$21.23"
+    },
+    {
+      "ts": "05-21 18:49",
+      "msg": "Bot ACTIVATED"
+    }
+  ]
+}

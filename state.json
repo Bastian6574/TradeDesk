@@ -4,18 +4,38 @@
     "ANET",
     "MSTR",
     "ORCL",
-    "PLTR"
+    "PLTR",
+    "CRM"
   ],
   "averages": {
-    "ANET": 138.71,
-    "MSTR": 159.06,
-    "ORCL": 182.85,
-    "PLTR": 142.33
+    "CRM": 176.17
   },
   "active_ticker": "BTC",
-  "active_monitor": 1,
+  "active_monitor": 3,
   "monitors": {
     "1": {
+      "charts": [
+        {
+          "tf": "1wk",
+          "ticker": "BTC",
+          "utilityMode": "macd",
+          "widgetMode": "candles",
+          "widgetSettings": {
+            "l2TapeFontSize": 8,
+            "pineOpacity": 1,
+            "timerFontSize": 11,
+            "utilityHeight": 199,
+            "utilityYZoom": 2.2836939006971764
+          }
+        }
+      ],
+      "layoutRows": [
+        [
+          0
+        ]
+      ]
+    },
+    "2": {
       "layoutRows": [
         [
           0,
@@ -28,19 +48,7 @@
       ],
       "charts": [
         {
-          "ticker": "BTC",
-          "tf": "1h",
-          "utilityMode": "macd",
-          "widgetMode": "candles",
-          "widgetSettings": {
-            "pineOpacity": 1,
-            "timerFontSize": 11,
-            "l2TapeFontSize": 8,
-            "utilityYZoom": 1.25
-          }
-        },
-        {
-          "ticker": "BTC",
+          "ticker": "CRM",
           "tf": "30m",
           "utilityMode": "macd",
           "widgetMode": "candles",
@@ -48,18 +56,35 @@
             "pineOpacity": 1,
             "timerFontSize": 11,
             "l2TapeFontSize": 8,
-            "utilityYZoom": 2
+            "panelFlexBasis": 650,
+            "utilityHeight": 144,
+            "utilityYZoom": 1.428747751777543
+          }
+        },
+        {
+          "ticker": "MSTR",
+          "tf": "15m",
+          "utilityMode": "macd",
+          "widgetMode": "candles",
+          "widgetSettings": {
+            "pineOpacity": 1,
+            "timerFontSize": 11,
+            "l2TapeFontSize": 8,
+            "panelFlexBasis": 872,
+            "utilityHeight": 149,
+            "utilityYZoom": 1.934941262547196
           }
         },
         {
           "ticker": "BTC",
-          "tf": "30m",
-          "utilityMode": "rsi",
+          "tf": "1m",
+          "utilityMode": "macd",
           "widgetMode": "level2",
           "widgetSettings": {
             "pineOpacity": 1,
             "timerFontSize": 11,
-            "l2TapeFontSize": 9
+            "l2TapeFontSize": 11,
+            "panelFlexBasis": 695
           }
         },
         {
@@ -70,74 +95,23 @@
           "widgetSettings": {
             "pineOpacity": 1,
             "timerFontSize": 11,
-            "l2TapeFontSize": 8
+            "l2TapeFontSize": 8,
+            "brainSectionHeights": [
+              98.15625,
+              162.90625,
+              161.25
+            ],
+            "panelFlexBasis": 827
           }
         }
-      ]
-    },
-    "2": {
-      "charts": [
-        {
-          "tf": "30m",
-          "ticker": "ANET",
-          "utilityMode": "rsi",
-          "widgetMode": "candles",
-          "widgetSettings": {
-            "l2TapeFontSize": 8,
-            "pineOpacity": 1,
-            "timerFontSize": 11
-          }
-        },
-        {
-          "tf": "15m",
-          "ticker": "ANET",
-          "utilityMode": "rsi",
-          "widgetMode": "candles",
-          "widgetSettings": {
-            "l2TapeFontSize": 8,
-            "pineOpacity": 1,
-            "timerFontSize": 11
-          }
-        },
-        {
-          "tf": "5m",
-          "ticker": "ANET",
-          "utilityMode": "rsi",
-          "widgetMode": "candles",
-          "widgetSettings": {
-            "l2TapeFontSize": 8,
-            "pineOpacity": 1,
-            "timerFontSize": 11
-          }
-        },
-        {
-          "tf": "30m",
-          "ticker": "BTC",
-          "utilityMode": "rsi",
-          "widgetMode": "liquidation",
-          "widgetSettings": {
-            "l2TapeFontSize": 8,
-            "pineOpacity": 1,
-            "timerFontSize": 11
-          }
-        }
-      ],
-      "layoutRows": [
-        [
-          0,
-          1
-        ],
-        [
-          2,
-          3
-        ]
       ]
     },
     "3": {
       "layoutRows": [
         [
           0,
-          1
+          1,
+          4
         ],
         [
           2,
@@ -146,58 +120,80 @@
       ],
       "charts": [
         {
-          "ticker": "ANET",
-          "tf": "30m",
+          "ticker": "CRM",
+          "tf": "5m",
           "utilityMode": "macd",
           "widgetMode": "candles",
           "widgetSettings": {
             "pineOpacity": 1,
             "timerFontSize": 11,
-            "l2TapeFontSize": 8
+            "l2TapeFontSize": 8,
+            "utilityHeight": 126,
+            "utilityYZoom": 1.133011834079626
           }
         },
         {
           "ticker": "MSTR",
-          "tf": "30m",
+          "tf": "5m",
           "utilityMode": "macd",
           "widgetMode": "candles",
           "widgetSettings": {
             "pineOpacity": 1,
             "timerFontSize": 11,
-            "l2TapeFontSize": 8
+            "l2TapeFontSize": 8,
+            "utilityHeight": 131,
+            "utilityYZoom": 1
           }
         },
         {
           "ticker": "ORCL",
-          "tf": "1m",
+          "tf": "1h",
           "utilityMode": "macd",
           "widgetMode": "candles",
           "widgetSettings": {
             "pineOpacity": 1,
             "timerFontSize": 11,
-            "l2TapeFontSize": 8
+            "l2TapeFontSize": 8,
+            "utilityHeight": 132
           }
         },
         {
           "ticker": "PLTR",
-          "tf": "30m",
+          "tf": "1h",
           "utilityMode": "macd",
           "widgetMode": "candles",
           "widgetSettings": {
             "pineOpacity": 1,
             "timerFontSize": 11,
-            "l2TapeFontSize": 8
+            "l2TapeFontSize": 8,
+            "utilityHeight": 125
+          }
+        },
+        {
+          "ticker": "MSTR",
+          "tf": "1m",
+          "utilityMode": "macd",
+          "widgetMode": "console",
+          "widgetSettings": {
+            "pineOpacity": 1,
+            "timerFontSize": 11,
+            "l2TapeFontSize": 8,
+            "brainSectionHeights": [
+              133.421875,
+              98.25,
+              182.140625
+            ]
           }
         }
       ]
     }
   },
-  "default_tf": "30m",
-  "chart_zoom": 156,
+  "default_tf": "1m",
+  "chart_zoom": 73,
   "sidebar_width": 0,
-  "update_interval": 250,
+  "update_interval": 100,
   "active_curve": "rsi",
   "rsi_period": 14,
-  "utility_height": 100,
+  "utility_height": 106,
   "right_panel_width": 200
 }

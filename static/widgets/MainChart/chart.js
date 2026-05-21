@@ -296,7 +296,7 @@ export function renderChartContainer() {
     row.forEach((idx, j) => {
       const p = App.panels[idx]; if (!p) return;
       p.el = buildPanelEl(p);
-      if (p.widgetSettings?.panelFlexBasis) p.el.style.flex = `0 0 ${p.widgetSettings.panelFlexBasis}px`;
+      if (p.widgetSettings?.panelFlexBasis) p.el.style.flex = `1 1 ${p.widgetSettings.panelFlexBasis * 100}%`;
       rowEl.appendChild(p.el);
       initPanelEvents(p);
       applyTFButtons(p); applyUtilitySelect(p); applyWidgetModeSelect(p);
@@ -309,8 +309,6 @@ export function renderChartContainer() {
         hr.addEventListener("mousedown", (e) => {
           e.preventDefault();
           const startX = e.clientX, startW1 = p.el.getBoundingClientRect().width, startW2 = nextP?.el.getBoundingClientRect().width ?? 0;
-          p.el.style.flex = `0 0 ${startW1}px`;
-          if (nextP?.el) nextP.el.style.flex = `0 0 ${startW2}px`;
           document.body.style.cursor = "col-resize";
           let raf = null;
           const onMove = (me) => {
@@ -321,9 +319,6 @@ export function renderChartContainer() {
               const w1 = Math.max(150, startW1 + dx), w2 = Math.max(150, startW2 - dx);
               p.el.style.flex = `0 0 ${w1}px`;
               if (nextP?.el) nextP.el.style.flex = `0 0 ${w2}px`;
-              if (!p.widgetSettings) p.widgetSettings = {};
-              p.widgetSettings.panelFlexBasis = w1;
-              if (nextP) { if (!nextP.widgetSettings) nextP.widgetSettings = {}; nextP.widgetSettings.panelFlexBasis = w2; }
               [p, nextP].forEach(rp => { if (!rp?.candleData) return;
                 drawMainChart(rp, rp.candleData);
                 if (rp.candleData._liveCandles) drawUtility(rp, rp.candleData._liveCandles);
@@ -334,6 +329,19 @@ export function renderChartContainer() {
             document.removeEventListener("mousemove", onMove);
             document.removeEventListener("mouseup", onUp);
             document.body.style.cursor = "";
+            const rowW = p.el.parentElement.getBoundingClientRect().width;
+            if (rowW > 0) {
+              const r1 = p.el.getBoundingClientRect().width / rowW;
+              const r2 = nextP ? nextP.el.getBoundingClientRect().width / rowW : 0;
+              if (!p.widgetSettings) p.widgetSettings = {};
+              p.widgetSettings.panelFlexBasis = r1;
+              p.el.style.flex = `1 1 ${r1 * 100}%`;
+              if (nextP) {
+                if (!nextP.widgetSettings) nextP.widgetSettings = {};
+                nextP.widgetSettings.panelFlexBasis = r2;
+                nextP.el.style.flex = `1 1 ${r2 * 100}%`;
+              }
+            }
             saveMonitorPreset();
           };
           document.addEventListener("mousemove", onMove);
