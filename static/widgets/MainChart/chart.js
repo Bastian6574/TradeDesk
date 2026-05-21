@@ -136,18 +136,24 @@ export function initPanelEvents(p) {
     }
   }, { passive: false });
 
-  // Left-click drag: chart area = 2D free pan; right y-axis strip (last 55px) = y-scale; footer = x-scale
-  const _footer = document.getElementById("chart-footer-" + p.idx);
+  // Left-click drag: x-axis zone = x-scale; right y-axis strip (55px) = y-scale; chart area = 2D pan
   let _dragging = false, _dm = "pan", _sx = 0, _sy = 0, _so = 0, _sz = 0, _syMin = 0, _syMax = 0;
+  const _dragMode = (e) => {
+    if (!p.mainChart) return "pan";
+    const r = wrap.getBoundingClientRect();
+    const relY = e.clientY - r.top;
+    if (relY > (p.mainChart.chartArea?.bottom ?? Infinity)) return "xscale";
+    if (e.clientX > r.right - 55) return "yscale";
+    return "pan";
+  };
   wrap.addEventListener("mousedown", (e) => {
     if (e.button !== 0 || !p.mainChart) return;
-    const r = wrap.getBoundingClientRect();
-    _dm = e.clientX > r.right - 55 ? "yscale" : "pan";
+    _dm = _dragMode(e);
     _dragging = true;
-    _sx = e.clientX; _sy = e.clientY; _so = p._xOffset;
+    _sx = e.clientX; _sy = e.clientY; _so = p._xOffset; _sz = p.chartZoom;
     _syMin = p._yMin ?? p.mainChart.options.scales.y.min;
     _syMax = p._yMax ?? p.mainChart.options.scales.y.max;
-    wrap.style.cursor = _dm === "yscale" ? "ns-resize" : "grab";
+    wrap.style.cursor = _dm === "yscale" ? "ns-resize" : _dm === "xscale" ? "ew-resize" : "grab";
     e.preventDefault();
   });
   const _onMove = (e) => {
@@ -192,8 +198,13 @@ export function initPanelEvents(p) {
     if (!p._panLocked) { p._panLocked = true; _showResetBtn(p); }
     _updateChartView(p);
   };
-  const _onUp = () => { if (_dragging) { _dragging = false; wrap.style.cursor = ""; if (_footer) _footer.style.cursor = ""; } };
-  wrap.addEventListener("mousemove", (e) => { if (!_dragging) { const r = wrap.getBoundingClientRect(); wrap.style.cursor = e.clientX > r.right - 55 ? "ns-resize" : ""; } });
+  const _onUp = () => { if (_dragging) { _dragging = false; wrap.style.cursor = ""; } };
+  wrap.addEventListener("mousemove", (e) => {
+    if (!_dragging) {
+      const m = _dragMode(e);
+      wrap.style.cursor = m === "yscale" ? "ns-resize" : m === "xscale" ? "ew-resize" : "";
+    }
+  });
   wrap.addEventListener("mouseleave", () => { if (!_dragging) wrap.style.cursor = ""; });
   // Double-click resets the full view
   wrap.addEventListener("dblclick", () => {
@@ -202,19 +213,6 @@ export function initPanelEvents(p) {
     if (p.tf === "1s") { if (p.liveCandles.length) drawLiveChart(p, p.liveCandles[p.liveCandles.length - 1].c); }
     else if (p.candleData) { drawMainChart(p, p.candleData); drawUtility(p, p.candleData._liveCandles); }
   });
-  // Footer timeline: drag left/right to scale X axis
-  if (_footer) {
-    _footer.addEventListener("mousedown", (e) => {
-      if (e.button !== 0 || e.target.tagName === "BUTTON" || e.target.tagName === "SELECT") return;
-      _dm = "xscale"; _dragging = true; _sx = e.clientX; _sz = p.chartZoom;
-      _footer.style.cursor = "ew-resize"; e.preventDefault();
-    });
-    _footer.addEventListener("mousemove", (e) => {
-      if (!_dragging)
-        _footer.style.cursor = (e.target.tagName === "BUTTON" || e.target.tagName === "SELECT") ? "" : "ew-resize";
-    });
-    _footer.addEventListener("mouseleave", () => { if (!_dragging) _footer.style.cursor = ""; });
-  }
   document.addEventListener("mousemove", _onMove);
   document.addEventListener("mouseup", _onUp);
 }
